@@ -26,6 +26,8 @@ public sealed class MainForm : Form
     private const string DeleteKeyText = "Del";
     private const string UndoKeyText = "Ctrl+Z";
     private const string RedoKeyText = "Ctrl+Y";
+    private const string UndoneText = "Undone";
+    private const string RedoneText = "Redone";
 
     private static readonly KeysConverter KeyNames = new();
 
@@ -266,6 +268,17 @@ public sealed class MainForm : Form
         var search = new Command("&Search all files...", ShowSearch, Keys.Control | Keys.Shift | Keys.F, Glyph.Search);
         var backups = new Command("&Backups...", ShowBackups, Icon: Glyph.Backups);
         var changes = new Command("&Change log...", ShowChanges, Icon: Glyph.ChangeLog);
+        Command[] creators =
+        [
+            new("New &gang...", () => _ = RunAsync(() => OpenCreatorAsync(CreatorMode.Gang))),
+            new("New gang &den...", () => _ = RunAsync(() => OpenCreatorAsync(CreatorMode.GangDen))),
+            new("New &shop / location...", () => _ = RunAsync(() => OpenCreatorAsync(CreatorMode.Location))),
+            new("New &agency...", () => _ = RunAsync(() => OpenCreatorAsync(CreatorMode.Agency)))
+        ];
+        var createMenu = new ToolStripMenuItem("C&reate", GlyphImage(Glyph.Add));
+        createMenu.DropDownItems.AddRange([.. creators.Select(ContextItem)]);
+        var createButton = new ToolStripDropDownButton("Create", GlyphImage(Glyph.Add)) { DisplayStyle = ToolStripItemDisplayStyle.ImageAndText, ToolTipText = "Create a gang, gang den, shop or agency from a template" };
+        createButton.DropDownItems.AddRange([.. creators.Select(ContextItem)]);
         var undo = new Command("&Undo", Undo, Icon: Glyph.Undo, ShortcutText: UndoKeyText);
         var redo = new Command("&Redo", Redo, Icon: Glyph.Redo, ShortcutText: RedoKeyText);
         _undoMenu = MenuItem(undo);
@@ -296,6 +309,7 @@ public sealed class MainForm : Form
             new ToolStripSeparator(),
             MenuItem(duplicate),
             MenuItem(delete),
+            createMenu,
             new ToolStripSeparator(),
             MenuItem(new Command("&Filter list", FocusFilter, Keys.Control | Keys.F)),
             MenuItem(search)
@@ -329,6 +343,8 @@ public sealed class MainForm : Form
             ToolButton(saveAll, "Save all"),
             new ToolStripSeparator(),
             ToolButton(reload, "Reload"),
+            new ToolStripSeparator(),
+            createButton,
             new ToolStripSeparator(),
             ToolButton(search, "Search"),
             ToolButton(backups, "Backups"),
@@ -763,19 +779,54 @@ public sealed class MainForm : Form
         SetStatus(tags.Count == 1 ? $"\"{title}\" deleted" : $"{Format.Number(tags.Count)} entries deleted");
     }
 
-    private void Undo() => ApplyHistory(_workspace.History.Undo, "Undone");
-
-    private void Redo() => ApplyHistory(_workspace.History.Redo, "Redone");
-
-    private void ApplyHistory(Func<XDocument?> step, string verb)
+    private async Task OpenCreatorAsync(CreatorMode mode)
     {
-        var path = verb == "Undone" ? _workspace.History.UndoTarget : _workspace.History.RedoTarget;
-        if (step() is not { } changed)
+        if (!_workspace.IsOpen)
         {
             return;
         }
 
-        if (ReferenceEquals(_document?.Document, changed))
+        UseWaitCursor = true;
+        CreatorSession session;
+        try
+        {
+            session = await CreatorSession.LoadAsync(_workspace);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+        }
+
+        using var form = new CreatorForm(mode, session.Engine, session.Data);
+        if (form.ShowDialog(this) != DialogResult.OK || form.Result is not { } created)
+        {
+            return;
+        }
+
+        _workspace.History.Close();
+        UpdateHistoryCommands();
+        if (session.Locate(created) is { } location)
+        {
+            await NavigateAsync(location.FilePath, location.CategoryPath, location.Index, null);
+        }
+
+        SetStatus($"{form.Text.Replace("New ", "Created ", StringComparison.Ordinal)} – save to keep it (Ctrl+Shift+S), undo with Ctrl+Z");
+    }
+
+    private void Undo() => ApplyHistory(_workspace.History.Undo, UndoneText);
+
+    private void Redo() => ApplyHistory(_workspace.History.Redo, RedoneText);
+
+    private void ApplyHistory(Func<IReadOnlyCollection<XDocument>> step, string verb)
+    {
+        var target = verb == UndoneText ? _workspace.History.UndoTarget : _workspace.History.RedoTarget;
+        var changed = step();
+        if (changed.Count == 0)
+        {
+            return;
+        }
+
+        if (_document is not null && changed.Contains(_document.Document))
         {
             var index = SelectedEntryTags().FirstOrDefault()?.Index ?? 0;
             RefreshCategory();
@@ -784,7 +835,7 @@ public sealed class MainForm : Form
         }
 
         UpdateHistoryCommands();
-        SetStatus($"{verb}: change in {Path.GetFileName(path)}");
+        SetStatus($"{verb}: change in {target}");
     }
 
     private void UpdateHistoryCommands()
@@ -792,8 +843,8 @@ public sealed class MainForm : Form
         var history = _workspace.History;
         _undoButton.Enabled = _undoMenu.Enabled = history.CanUndo;
         _redoButton.Enabled = _redoMenu.Enabled = history.CanRedo;
-        _undoButton.ToolTipText = history.UndoTarget is { } undo ? $"Undo change in {Path.GetFileName(undo)} ({UndoKeyText})" : $"Undo ({UndoKeyText})";
-        _redoButton.ToolTipText = history.RedoTarget is { } redo ? $"Redo change in {Path.GetFileName(redo)} ({RedoKeyText})" : $"Redo ({RedoKeyText})";
+        _undoButton.ToolTipText = history.UndoTarget is { } undo ? $"Undo change in {undo} ({UndoKeyText})" : $"Undo ({UndoKeyText})";
+        _redoButton.ToolTipText = history.RedoTarget is { } redo ? $"Redo change in {redo} ({RedoKeyText})" : $"Redo ({RedoKeyText})";
     }
 
     private static bool IsTextInputFocused() => FromHandle(GetFocus()) is TextBoxBase;

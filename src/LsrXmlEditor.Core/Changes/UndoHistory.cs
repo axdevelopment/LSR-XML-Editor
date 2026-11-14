@@ -21,9 +21,9 @@ public sealed class UndoHistory
 
     public bool CanRedo => _redo.Count > 0;
 
-    public string? UndoTarget => _undo.Last?.Value.Path;
+    public string? UndoTarget => _undo.Last is { } last ? Describe(last.Value) : null;
 
-    public string? RedoTarget => _redo.TryPeek(out var step) ? step.Path : null;
+    public string? RedoTarget => _redo.TryPeek(out var step) ? Describe(step) : null;
 
     public void Track(XDocument document, string path)
     {
@@ -46,7 +46,7 @@ public sealed class UndoHistory
         for (var node = _undo.First; node is not null;)
         {
             var next = node.Next;
-            if (ReferenceEquals(node.Value.Document, document))
+            if (node.Value.Touches(document))
             {
                 _undo.Remove(node);
             }
@@ -54,9 +54,14 @@ public sealed class UndoHistory
             node = next;
         }
 
-        var remaining = _redo.Where(s => !ReferenceEquals(s.Document, document)).Reverse().ToList();
+        var remaining = _redo.Where(s => !s.Touches(document)).Reverse().ToList();
         _redo.Clear();
         remaining.ForEach(_redo.Push);
+        if (_open?.Touches(document) == true)
+        {
+            _open = null;
+        }
+
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -73,15 +78,15 @@ public sealed class UndoHistory
 
     public void Close() => _open = null;
 
-    public XDocument? Undo() => Replay(_undo.Last?.Value, fromUndo: true);
+    public IReadOnlyCollection<XDocument> Undo() => Replay(_undo.Last?.Value, fromUndo: true);
 
-    public XDocument? Redo() => Replay(_redo.TryPeek(out var step) ? step : null, fromUndo: false);
+    public IReadOnlyCollection<XDocument> Redo() => Replay(_redo.TryPeek(out var step) ? step : null, fromUndo: false);
 
-    private XDocument? Replay(Step? step, bool fromUndo)
+    private IReadOnlyCollection<XDocument> Replay(Step? step, bool fromUndo)
     {
         if (step is null)
         {
-            return null;
+            return [];
         }
 
         _open = null;
@@ -94,7 +99,7 @@ public sealed class UndoHistory
             _redo.Pop();
         }
 
-        var inverse = new Step(step.Document, step.Path);
+        var inverse = new Step();
         _replaying = inverse;
         try
         {
@@ -118,7 +123,13 @@ public sealed class UndoHistory
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
-        return step.Document;
+        return step.Documents;
+    }
+
+    private string Describe(Step step)
+    {
+        var names = step.Documents.Select(d => Path.GetFileName(_documents.GetValueOrDefault(d, string.Empty))).Where(n => n.Length > 0).ToList();
+        return names.Count == 1 ? names[0] : $"{names.Count} files";
     }
 
     private void OnChanging(object? sender, XObjectChangeEventArgs e)
@@ -130,17 +141,17 @@ public sealed class UndoHistory
 
         Operation? operation = e.ObjectChange switch
         {
-            XObjectChange.Remove when target is XNode node && node.Parent is { } parent => new Removal(node, parent, IndexOf(node)),
-            XObjectChange.Remove when target is XAttribute attribute && attribute.Parent is { } owner => new AttributeRemoval(attribute, owner),
-            XObjectChange.Value when target is XText text => new TextValue(text, text.Value),
-            XObjectChange.Value when target is XAttribute attribute => new AttributeValue(attribute, attribute.Value),
-            XObjectChange.Name when target is XElement element => new Rename(element, element.Name),
+            XObjectChange.Remove when target is XNode node && node.Parent is { } parent => new Removal(document, node, parent, IndexOf(node)),
+            XObjectChange.Remove when target is XAttribute attribute && attribute.Parent is { } owner => new AttributeRemoval(document, attribute, owner),
+            XObjectChange.Value when target is XText text => new TextValue(document, text, text.Value),
+            XObjectChange.Value when target is XAttribute attribute => new AttributeValue(document, attribute, attribute.Value),
+            XObjectChange.Name when target is XElement element => new Rename(document, element, element.Name),
             _ => null
         };
 
         if (operation is not null)
         {
-            Record(document, operation);
+            Record(operation);
         }
     }
 
@@ -148,27 +159,27 @@ public sealed class UndoHistory
     {
         if (e.ObjectChange == XObjectChange.Add && sender is XObject target && target.Document is { } document)
         {
-            Record(document, new Addition(target));
+            Record(new Addition(document, target));
         }
     }
 
-    private void Record(XDocument document, Operation operation)
+    private void Record(Operation operation)
     {
         if (_replaying is { } replay)
         {
-            replay.Operations.Add(operation);
+            replay.Add(operation);
             return;
         }
 
-        if (_open is null || !ReferenceEquals(_open.Document, document))
+        if (_open is null)
         {
-            _open = new Step(document, _documents.GetValueOrDefault(document, string.Empty));
+            _open = new Step();
             Append(_open);
             _redo.Clear();
             Changed?.Invoke(this, EventArgs.Empty);
         }
 
-        _open.Operations.Add(operation);
+        _open.Add(operation);
     }
 
     private void Append(Step step)
@@ -191,21 +202,31 @@ public sealed class UndoHistory
         return index;
     }
 
-    private sealed class Step(XDocument document, string path)
+    private sealed class Step
+    {
+        private readonly HashSet<XDocument> _documents = new(ReferenceEqualityComparer.Instance);
+
+        public List<Operation> Operations { get; } = [];
+
+        public IReadOnlyCollection<XDocument> Documents => _documents;
+
+        public void Add(Operation operation)
+        {
+            Operations.Add(operation);
+            _documents.Add(operation.Document);
+        }
+
+        public bool Touches(XDocument document) => _documents.Contains(document);
+    }
+
+    private abstract class Operation(XDocument document)
     {
         public XDocument Document { get; } = document;
 
-        public string Path { get; } = path;
-
-        public List<Operation> Operations { get; } = [];
-    }
-
-    private abstract class Operation
-    {
         public abstract void Revert();
     }
 
-    private sealed class Addition(XObject target) : Operation
+    private sealed class Addition(XDocument document, XObject target) : Operation(document)
     {
         public override void Revert()
         {
@@ -221,7 +242,7 @@ public sealed class UndoHistory
         }
     }
 
-    private sealed class Removal(XNode node, XContainer parent, int index) : Operation
+    private sealed class Removal(XDocument document, XNode node, XContainer parent, int index) : Operation(document)
     {
         public override void Revert()
         {
@@ -240,22 +261,22 @@ public sealed class UndoHistory
         }
     }
 
-    private sealed class AttributeRemoval(XAttribute attribute, XElement owner) : Operation
+    private sealed class AttributeRemoval(XDocument document, XAttribute attribute, XElement owner) : Operation(document)
     {
         public override void Revert() => owner.Add(attribute);
     }
 
-    private sealed class TextValue(XText text, string value) : Operation
+    private sealed class TextValue(XDocument document, XText text, string value) : Operation(document)
     {
         public override void Revert() => text.Value = value;
     }
 
-    private sealed class AttributeValue(XAttribute attribute, string value) : Operation
+    private sealed class AttributeValue(XDocument document, XAttribute attribute, string value) : Operation(document)
     {
         public override void Revert() => attribute.Value = value;
     }
 
-    private sealed class Rename(XElement element, XName name) : Operation
+    private sealed class Rename(XDocument document, XElement element, XName name) : Operation(document)
     {
         public override void Revert() => element.Name = name;
     }

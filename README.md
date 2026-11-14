@@ -2,7 +2,7 @@
 
 # LSR XML Editor
 
-**Version 0.1 – beta**
+**Version 0.2 – beta**
 
 A Windows editor for the XML configuration files of Los Santos RED (GTA V mod), with an optional 3D viewer for peds, vehicles, weapons, items and animations.
 Runs completely offline – no auto-updater, no downloads, no telemetry.
@@ -13,6 +13,14 @@ Runs completely offline – no auto-updater, no downloads, no telemetry.
 
 ![Editor](docs/editor.png)
 
+## What's new
+
+**Creators** for gangs, gang dens, shops/locations and police agencies (*Create* in the toolbar). Pick an existing entry as template, enter the new ID and names, and decide per linked group (peds, vehicles, weapons, menus …) whether it gets copied with a new ID or shared. Gangs can get a den and territory right away, agencies their jurisdiction. One Ctrl+Z undoes the whole thing.
+
+| | |
+| --- | --- |
+| ![Gang creator](docs/creator-gang.png) | ![Shop creator](docs/creator-shop.png) |
+
 ## Features
 
 - All configs sorted by topic – Police & Dispatch, Gangs & Contacts, Locations & World, Items/Weapons/Shops, Vehicles, Peds, Phone & Animations, Settings, Save Games. Large files such as `Locations.xml` or `ModItems.xml` are split into their sections.
@@ -21,6 +29,7 @@ Runs completely offline – no auto-updater, no downloads, no telemetry.
 - Values that refer to GTA V itself (relationship groups, model names, animations, zone codes, voices) are locked with a padlock and can be unlocked on purpose.
 - Edit several entries at once, duplicate or delete entries and list items.
 - Undo and redo the last 10 changes (Ctrl+Z / Ctrl+Y).
+- Creators for gangs, gang dens, shops/locations and police agencies based on existing entries.
 - Search across all files and jump straight to the field (Ctrl+Shift+F).
 - Automatic backup before every save, restore via *Tools → Backups*.
 - Change log: every save is recorded as a diff and can be reapplied after an LSR update (*Tools → Change log*).

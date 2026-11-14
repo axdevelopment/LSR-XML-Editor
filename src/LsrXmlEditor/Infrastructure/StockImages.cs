@@ -15,7 +15,8 @@ public enum Glyph
     Delete = 0xE74D,
     View3D = 0xE890,
     Undo = 0xE7A7,
-    Redo = 0xE7A6
+    Redo = 0xE7A6,
+    Add = 0xE710
 }
 
 public static class StockImages
