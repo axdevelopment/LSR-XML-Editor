@@ -1,0 +1,224 @@
+using System.Diagnostics;
+using System.Xml.Linq;
+using LsrXmlEditor.Core.Backups;
+using LsrXmlEditor.Core.Changes;
+using LsrXmlEditor.Core.Files;
+using LsrXmlEditor.Core.Search;
+using LsrXmlEditor.Core.Workspace;
+using LsrXmlEditor.Core.Xml;
+
+if (args.Length == 0 || !Directory.Exists(args[0]))
+{
+    Console.WriteLine("Usage: LsrXmlEditor.Tests <folder with LSR xml files>");
+    return 2;
+}
+
+var source = args[0];
+var failures = 0;
+
+void Check(bool condition, string name)
+{
+    Console.WriteLine($"{(condition ? "PASS" : "FAIL")}  {name}");
+    if (!condition)
+    {
+        failures++;
+    }
+}
+
+var work = Path.Combine(Path.GetTempPath(), "LsrXmlEditorTests", Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(work);
+
+try
+{
+    var files = FileScanner.Discover(source, includeSubfolders: true);
+    Check(files.Count > 0, $"discover ({files.Count} files)");
+
+    var watch = Stopwatch.StartNew();
+    var stats = files.AsParallel().Select(f => (File: f, Stats: FileScanner.Analyze(f.FullPath))).ToList();
+    Console.WriteLine($"      analyze: {watch.ElapsedMilliseconds} ms");
+    foreach (var (file, stat) in stats.Where(s => !s.File.IsVariant))
+    {
+        Console.WriteLine($"      {file.FileName,-28} {stat.RootName,-34} {stat.EntryCount,6}  {string.Join(", ", stat.Categories.Take(4).Select(c => $"{c.Name}:{c.Count}"))}");
+    }
+
+    Check(stats.All(s => s.Stats.Error is null), "analyze without errors");
+
+    var variants = files.Where(f => f.IsVariant).ToList();
+    Check(variants.Any(v => v.FileName.StartsWith("Agencies+_", StringComparison.Ordinal) || v.BaseName == "DispatchableVehicles"), $"variants detected ({variants.Count})");
+
+    foreach (var file in files)
+    {
+        var copy = Path.Combine(work, "roundtrip.xml");
+        var document = XmlConfigDocument.Load(file.FullPath);
+        document.WriteTo(copy);
+        var identical = File.ReadAllBytes(file.FullPath).AsSpan().SequenceEqual(File.ReadAllBytes(copy));
+        if (!identical)
+        {
+            Check(false, $"roundtrip identical: {file.RelativePath}");
+        }
+
+        var skeleton = stats.First(s => s.File == file).Stats;
+        var full = document.Categories.Sum(c => c.Count);
+        if (full != skeleton.EntryCount)
+        {
+            Check(false, $"skeleton count matches full count: {file.RelativePath} ({skeleton.EntryCount} vs {full})");
+        }
+    }
+
+    Check(true, "roundtrip + count checks completed");
+
+    var folder = Path.Combine(work, "data");
+    Directory.CreateDirectory(folder);
+    File.Copy(Path.Combine(source, "Agencies.xml"), Path.Combine(folder, "Agencies.xml"));
+    var pristine = Path.Combine(work, "Agencies.pristine.xml");
+    File.Copy(Path.Combine(source, "Agencies.xml"), pristine);
+
+    var backups = new BackupService(Path.Combine(work, "backups"));
+    var changeLog = new ChangeLogStore(Path.Combine(work, "changes.json"));
+    var saver = new ConfigSaver(folder, backups, changeLog);
+
+    var agencies = XmlConfigDocument.Load(Path.Combine(folder, "Agencies.xml"));
+    var category = agencies.Categories.Single();
+    var lspd = category.Entries.First();
+    var spawnLimit = lspd.Element("SpawnLimit")!;
+    var editedLimit = (int.Parse(spawnLimit.Value) + 1).ToString();
+    XmlEditing.SetValue(spawnLimit, editedLimit);
+    var clone = XmlEditing.CloneAfter(lspd);
+    XmlEditing.SetValue(clone.Element("ID")!, "LSPD_TEST");
+    XmlEditing.Remove(category.Entries.Last());
+    Check(agencies.IsDirty, "document dirty after edit");
+
+    var result = saver.Save(agencies);
+    Check(result.Backup is not null && File.Exists(result.Backup.BackupPath), "backup created");
+    Check(result.Changes?.Operations.Count == 3, $"diff produced 3 operations ({result.Changes?.Operations.Count})");
+    foreach (var op in result.Changes?.Operations ?? [])
+    {
+        Console.WriteLine($"      {op.Kind}: {op.Describe()}");
+    }
+
+    var reloaded = XmlConfigDocument.Load(Path.Combine(folder, "Agencies.xml"));
+    Check(reloaded.Categories.Single().Entries.First().Element("SpawnLimit")!.Value == editedLimit, "edited value persisted");
+    Check(changeLog.Load().Count == 1, "change log stored");
+
+    var fresh = XmlConfigDocument.Load(pristine);
+    var replay = ChangeReplayer.Apply(fresh, changeLog.Load().SelectMany(c => c.Operations));
+    Check(replay.All(r => r.Status == ReplayStatus.Applied), "replay applies cleanly on pristine copy");
+    var replayPath = Path.Combine(work, "replayed.xml");
+    fresh.WriteTo(replayPath);
+    Check(File.ReadAllText(replayPath) == File.ReadAllText(Path.Combine(folder, "Agencies.xml")), "replayed file equals edited file");
+
+    var replayAgain = ChangeReplayer.Apply(fresh, changeLog.Load().SelectMany(c => c.Operations));
+    Check(replayAgain.All(r => r.Status == ReplayStatus.AlreadyApplied), "replay is idempotent");
+
+    var restored = backups.Restore(backups.List().First(b => b.RelativePath == "Agencies.xml"), folder);
+    Check(File.ReadAllText(Path.Combine(folder, "Agencies.xml")) == File.ReadAllText(pristine), "restore brings back original");
+    Check(restored is not null, "restore keeps safety backup");
+
+    var gangs = XmlConfigDocument.Load(Path.Combine(source, "Gangs.xml")).Categories.Single().Entries.First();
+    var agency = XmlConfigDocument.Load(Path.Combine(source, "Agencies.xml")).Categories.Single().Entries.First();
+    Check(GameReferences.Describe(gangs.Element("ID")!) is not null, "gang relationship group is a game reference");
+    Check(GameReferences.Describe(agency.Element("ID")!) is null, "agency ID is not a game reference");
+    Check(GameReferences.Describe(agency.Element("FullName")!) is null, "free text is not a game reference");
+
+    var hits = new List<SearchHit>();
+    watch.Restart();
+    foreach (var file in files.Where(f => !f.IsVariant))
+    {
+        var root = XmlConfigDocument.ParseFile(file.FullPath).Root!;
+        ConfigSearch.Run(root, file.FullPath, file.RelativePath, new SearchQuery("police4"), hits.Add, CancellationToken.None);
+    }
+
+    Console.WriteLine($"      search: {hits.Count} hits in {watch.ElapsedMilliseconds} ms");
+    Check(hits.Count > 0, "global search finds police4");
+
+    var multiDoc = XmlConfigDocument.Load(Path.Combine(source, "Agencies.xml"));
+    var picked = multiDoc.Categories.Single().Entries.Take(3).ToList();
+    var shared = SharedFields.Of(picked);
+    Check(shared.Count > 0 && shared.All(f => f.Elements.Count == picked.Count), $"shared fields across 3 agencies ({shared.Count})");
+    var idField = shared.First(f => f.Segment == "ID");
+    Check(SharedFields.CommonValue(idField.Elements) is null, "differing IDs report no common value");
+    var limitField = shared.First(f => f.Segment == "SpawnLimit");
+    foreach (var element in limitField.Elements)
+    {
+        XmlEditing.SetValue(element, "7");
+    }
+
+    Check(SharedFields.CommonValue(limitField.Elements) == "7", "common value after writing all selected");
+    Check(picked.All(p => p.Element("SpawnLimit")!.Value == "7"), "value written to every selected entry");
+    Check(shared.All(f => f.IsLeaf || !StructureAnalyzer.IsCollection(f.Elements[0])), "lists are excluded from multi edit");
+
+    var a = XElement.Parse("<E><A>1</A><B>x</B><C><D>1</D></C></E>");
+    var b = XElement.Parse("<E><A>2</A><C><D>1</D></C><X>9</X></E>");
+    var ab = SharedFields.Of([a, b]);
+    Check(ab.Select(f => f.Segment).SequenceEqual(["A", "C"]), "only fields present in every entry are shared");
+    var nested = SharedFields.Of(ab.Single(f => f.Segment == "C").Elements);
+    Check(SharedFields.CommonValue(nested.Single().Elements) == "1", "nested equal values are common");
+
+    var emptied = DocumentDiff.Compute(
+        XElement.Parse("<Root><A><Item><ID>a</ID></Item><Item><ID>b</ID></Item></A><B><Item><ID>c</ID></Item><Item><ID>d</ID></Item></B></Root>"),
+        XElement.Parse("<Root><A><Item><ID>a</ID></Item><Item><ID>b</ID></Item></A><B /></Root>"));
+    Check(emptied.Count == 2 && emptied.All(o => o.Kind == ChangeKind.EntryRemoved && o.Category == "Root/B"), "emptied category reports removed entries");
+
+    var logPath = Path.Combine(work, "corrupt.json");
+    File.WriteAllText(logPath, "{ not json");
+    var corruptLog = new ChangeLogStore(logPath);
+    corruptLog.Append(new ChangeSet(Guid.NewGuid(), DateTime.Now, "x.xml", []));
+    Check(Directory.GetFiles(work, "corrupt.json.corrupt-*").Length == 1 && corruptLog.Load().Count == 1, "corrupt change log is moved aside");
+
+    var limited = new BackupService(Path.Combine(work, "limited"), keepPerFile: 2);
+    var limitedFile = Path.Combine(folder, "Agencies.xml");
+    for (var i = 0; i < 2; i++)
+    {
+        limited.Create(folder, limitedFile);
+        Thread.Sleep(5);
+    }
+
+    var oldest = limited.List().Last();
+    var restoreOldest = Record(() => limited.Restore(oldest, folder));
+    Check(restoreOldest is null && limited.List().Count == 2, "restoring the oldest backup at the limit succeeds");
+
+    var guarded = XmlConfigDocument.Load(limitedFile);
+    XmlEditing.SetValue(guarded.Categories.Single().Entries.First().Element("SpawnLimit")!, "11");
+    File.SetLastWriteTimeUtc(limitedFile, DateTime.UtcNow.AddMinutes(-5));
+    Check(Record(() => saver.Save(guarded)) is ExternalChangeException && guarded.IsDirty, "external change blocks the save");
+    Check(Record(() => saver.Save(guarded, overwriteExternalChanges: true)) is null && !guarded.IsDirty, "overwrite after external change saves");
+
+    var racing = XmlConfigDocument.Load(limitedFile);
+    var racingLimit = racing.Categories.Single().Entries.First().Element("SpawnLimit")!;
+    XmlEditing.SetValue(racingLimit, "12");
+    var snapshot = racing.CreateSnapshot();
+    XmlEditing.SetValue(racingLimit, "13");
+    saver.Write(snapshot, overwriteExternalChanges: false);
+    racing.AcceptSave(snapshot);
+    Check(racing.IsDirty, "edit made during a save keeps the document dirty");
+    Check(!File.Exists(limitedFile + ".tmp"), "no temp file left after save");
+
+    var broken = Path.Combine(folder, "Broken.xml");
+    File.WriteAllText(broken, "<Root><Item><ID>a</ID></Item><Item><ID>b</ID></Item></Root>");
+    var brokenDoc = XmlConfigDocument.Load(broken);
+    XmlEditing.SetValue(brokenDoc.Categories.Single().Entries.First().Element("ID")!, "z");
+    File.WriteAllText(broken, "<Root><Item>");
+    File.SetLastWriteTimeUtc(broken, brokenDoc.LoadedWriteTime);
+    var brokenResult = saver.Save(brokenDoc);
+    Check(brokenResult.Changes is null && XmlConfigDocument.Load(broken).Root.Elements().First().Element("ID")!.Value == "z", "unparsable file on disk is still saved");
+}
+finally
+{
+    Directory.Delete(work, recursive: true);
+}
+
+Console.WriteLine(failures == 0 ? "ALL PASSED" : $"{failures} FAILED");
+return failures == 0 ? 0 : 1;
+
+static Exception? Record(Action action)
+{
+    try
+    {
+        action();
+        return null;
+    }
+    catch (Exception ex)
+    {
+        return ex;
+    }
+}

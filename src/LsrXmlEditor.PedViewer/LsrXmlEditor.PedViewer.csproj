@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>LsrXmlEditor.PedViewer</RootNamespace>
+    <AssemblyName>LsrXmlEditor.PedViewer</AssemblyName>
+    <CodeWalkerCorePath Condition="'$(CodeWalkerCorePath)' == ''">$(USERPROFILE)\Documents\CodeWalker\CodeWalker.Core\bin\Release\netstandard2.0\CodeWalker.Core.dll</CodeWalkerCorePath>
+    <OutputPath>..\LsrXmlEditor\bin\$(Configuration)\net10.0-windows\PedViewer\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="CodeWalker.Core">
+      <HintPath>$(CodeWalkerCorePath)</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
+  </ItemGroup>
+
+  <Target Name="RequireCodeWalker" BeforeTargets="ResolveAssemblyReferences" Condition="!Exists('$(CodeWalkerCorePath)')">
+    <Error Text="CodeWalker.Core.dll not found at '$(CodeWalkerCorePath)'. Build CodeWalker.Core first or pass -p:CodeWalkerCorePath=..." />
+  </Target>
+
+</Project>

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LsrXmlEditor.Core/LsrXmlEditor.Core.csproj" />
+    <Project Path="src/LsrXmlEditor/LsrXmlEditor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LsrXmlEditor.Tests/LsrXmlEditor.Tests.csproj" />
+    <Project Path="tests/LsrXmlEditor.UiSnapshots/LsrXmlEditor.UiSnapshots.csproj" />
+  </Folder>
+</Solution>
