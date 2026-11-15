@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Xml.Linq;
 using LsrXmlEditor.Core.Backups;
 using LsrXmlEditor.Core.Changes;
+using LsrXmlEditor.Core.Creators;
 using LsrXmlEditor.Core.Files;
 using LsrXmlEditor.Core.Search;
 using LsrXmlEditor.Core.Workspace;
@@ -201,6 +202,21 @@ try
     File.SetLastWriteTimeUtc(broken, brokenDoc.LoadedWriteTime);
     var brokenResult = saver.Save(brokenDoc);
     Check(brokenResult.Changes is null && XmlConfigDocument.Load(broken).Root.Elements().First().Element("ID")!.Value == "z", "unparsable file on disk is still saved");
+
+    Check(NameRules.GangId("The Test Crew") == "AMBIENT_GANG_TEST_CREW", "creator: gang id from name");
+    Check(NameRules.Initials("Los Santos Police Department") == "LSPD", "creator: agency initials");
+    Check(NameRules.Numbers("vector4(981.85, -103.02, 74.84, 220)").SequenceEqual([981.85, -103.02, 74.84, 220]), "creator: coordinates from clipboard text");
+    Check(NameRules.Numbers("981,85 -103,02 74,84").SequenceEqual([981.85, -103.02, 74.84]), "creator: comma decimals");
+
+    var place = XElement.Parse("<D><EntrancePosition><X>0</X><Y>0</Y><Z>0</Z></EntrancePosition><EntranceHeading>0</EntranceHeading><S><Location><X>0</X><Y>10</Y><Z>1</Z></Location><Heading>0</Heading></S></D>");
+    Relocation.Move(place, new Placement(100, 100, 5, 90), attached: true);
+    var spawn = place.Element("S")!;
+    Check(spawn.Element("Location")!.Element("X")!.Value == "90" && spawn.Element("Location")!.Element("Y")!.Value == "100" && spawn.Element("Heading")!.Value == "90", "creator: spawn points turn with the entrance");
+
+    var relations = XDocument.Parse("<ArrayOfGang>\n  <Gang>\n    <ID>A</ID>\n    <EnemyGangs />\n  </Gang>\n</ArrayOfGang>", LoadOptions.PreserveWhitespace);
+    CreatorEngine.AddToList(relations.Root!.Element("Gang")!, "EnemyGangs", "B");
+    var listXml = relations.Root.Element("Gang")!.Element("EnemyGangs")!.ToString(SaveOptions.DisableFormatting).ReplaceLineEndings("\n");
+    Check(listXml == "<EnemyGangs>\n      <string>B</string>\n    </EnemyGangs>", "creator: list entries keep the indentation");
 }
 finally
 {

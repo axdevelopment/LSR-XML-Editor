@@ -1,5 +1,13 @@
 namespace LsrXmlEditor.Core.Creators;
 
+public enum CreatorMode
+{
+    Gang,
+    GangDen,
+    Location,
+    Agency
+}
+
 public sealed record GroupKind(string FileBase, string Element, string IdElement);
 
 public sealed record LinkField(string Field, string Label, GroupKind Kind, string Suffix, bool CopyByDefault);
@@ -9,19 +17,49 @@ public sealed record EntityKind(
     string FileBase,
     string Element,
     string? IdField,
+    string NameField,
+    string? ClassField,
     IReadOnlyList<string> TextFields,
     IReadOnlyList<LinkField> Links);
+
+public sealed record LocationType(string Container, string Element, string Title, int Count);
+
+public sealed record ZoneInfo(string Code, string Name, string County);
+
+public sealed record SavedPosition(string Title, Placement Placement);
+
+public sealed record CreatorData(IReadOnlyList<LocationType> LocationTypes, IReadOnlyList<ZoneInfo> Zones, IReadOnlyList<SavedPosition> SavedPositions)
+{
+    public IReadOnlyList<string> Counties { get; } =
+        [.. Zones.Select(z => z.County).Where(c => c.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.CurrentCultureIgnoreCase)];
+}
 
 public static class CreatorCatalog
 {
     public const string LocationsFile = "Locations";
     public const string ZonesFile = "Zones";
+    public const string SaveGamesFile = "SaveGames";
     public const string GangTerritoriesFile = "GangTerritories";
     public const string ZoneJurisdictionsFile = "ZoneJurisdictions";
     public const string CountyJurisdictionsFile = "CountyJurisdictions";
+    public const string GangDensContainer = "GangDens";
     public const string GangDenElement = "GangDen";
     public const string AssociationField = "AssignedAssociationID";
+    public const string PrimaryDenField = "IsPrimaryGangDen";
     public const string MenuField = "MenuID";
+    public const string IdField = "ID";
+    public const string FullNameField = "FullName";
+    public const string ShortNameField = "ShortName";
+    public const string MemberNameField = "MemberName";
+    public const string ContactNameField = "ContactName";
+    public const string DenNameField = "DenName";
+    public const string PlatePrefixField = "LicensePlatePrefix";
+    public const string NameField = "Name";
+    public const string PromptField = "ButtonPromptText";
+    public const string ColorPrefixField = "ColorPrefix";
+    public const string ColorField = "ColorString";
+    public const string EnemiesField = "EnemyGangs";
+    public const string FriendsField = "FriendlyGangs";
 
     public static readonly GroupKind Peds = new("DispatchablePeople", "DispatchablePersonGroup", "DispatchablePersonGroupID");
     public static readonly GroupKind Vehicles = new("DispatchableVehicles", "DispatchableVehicleGroup", "DispatchableVehicleGroupID");
@@ -31,11 +69,13 @@ public static class CreatorCatalog
     public static readonly GroupKind ShopMenuGroup = new("ShopMenus", "ShopMenuGroup", "ID");
 
     public static readonly EntityKind Gang = new(
-        "Gang",
+        "gang",
         "Gangs",
         "Gang",
-        "ID",
-        ["FullName", "ShortName", "MemberName", "ContactName", "DenName", "LicensePlatePrefix"],
+        IdField,
+        FullNameField,
+        "GangClassification",
+        [FullNameField, ShortNameField, MemberNameField, ContactNameField, DenNameField, PlatePrefixField],
         [
             new("PersonnelID", "Gang members", Peds, "Peds", true),
             new("VehiclesID", "Vehicles", Vehicles, "Vehicles", true),
@@ -47,11 +87,13 @@ public static class CreatorCatalog
         ]);
 
     public static readonly EntityKind Agency = new(
-        "Agency",
+        "agency",
         "Agencies",
         "Agency",
-        "ID",
-        ["FullName", "ShortName", "MemberName", "LicensePlatePrefix"],
+        IdField,
+        FullNameField,
+        "Classification",
+        [FullNameField, ShortNameField, MemberNameField, PlatePrefixField],
         [
             new("PersonnelID", "Officers", Peds, "Peds", true),
             new("VehiclesID", "Vehicles", Vehicles, "Vehicles", true),
@@ -63,13 +105,10 @@ public static class CreatorCatalog
             new("OffDutyVehiclesID", "Off duty vehicles", Vehicles, "OffDutyVehicles", false)
         ]);
 
-    public static readonly IReadOnlyList<LinkField> LocationLinks =
-    [
-        new(MenuField, "Shop menu", ShopMenu, "Menu", true)
-    ];
+    public static readonly LinkField MenuLink = new(MenuField, "Shop menu", ShopMenu, "Menu", true);
 
-    public static readonly IReadOnlyList<string> LocationTextFields = ["Name", "FullName", "Description"];
+    public static EntityKind Location(string element, string title) =>
+        new(title, LocationsFile, element, null, NameField, null, [NameField, FullNameField, "Description", PromptField], [MenuLink]);
 
-    public static EntityKind Location(string element) =>
-        new("Location", LocationsFile, element, null, LocationTextFields, LocationLinks);
+    public static EntityKind Den { get; } = Location(GangDenElement, "gang den");
 }

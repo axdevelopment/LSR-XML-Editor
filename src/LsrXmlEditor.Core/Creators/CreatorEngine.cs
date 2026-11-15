@@ -1,122 +1,74 @@
-using System.Globalization;
 using System.Xml.Linq;
 using LsrXmlEditor.Core.Xml;
 
 namespace LsrXmlEditor.Core.Creators;
 
-public sealed record LinkPlan(LinkField Link, string TemplateValue, bool Copy, string NewId);
+public sealed record AreaRows(string FileBase, string Element, string KeyField, string OwnerField, IReadOnlyDictionary<string, string> Defaults);
 
-public sealed record Placement(double X, double Y, double Z, double Heading);
-
-public sealed record EntryPlan(
-    XElement Template,
-    string? NewId,
-    IReadOnlyDictionary<string, string> Values,
-    IReadOnlyList<LinkPlan> Links,
-    Placement? Placement);
-
-public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documents)
+public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documents, Func<XDocument, string> fileName)
 {
-    private const string PositionElement = "EntrancePosition";
-    private const string HeadingElement = "EntranceHeading";
-    private const string ZoneField = "ZoneInternalGameName";
-    private const string GangField = "GangID";
-    private const string AgencyField = "AgencyID";
-    private const string CountyField = "CountyID";
-    private const string AgencyInitialsField = "AgencyInitials";
+    private const string ListItem = "string";
     private const string PriorityField = "Priority";
 
+    public static readonly AreaRows Territories = new(CreatorCatalog.GangTerritoriesFile, "GangTerritory", "ZoneInternalGameName", "GangID", new Dictionary<string, string>());
+    public static readonly AreaRows ZoneJurisdictions = new(CreatorCatalog.ZoneJurisdictionsFile, "ZoneJurisdiction", "ZoneInternalGameName", "AgencyID", new Dictionary<string, string> { [PriorityField] = "0" });
+    public static readonly AreaRows CountyJurisdictions = new(CreatorCatalog.CountyJurisdictionsFile, "CountyJurisdiction", "CountyID", "AgencyInitials", new Dictionary<string, string> { [PriorityField] = "0" });
+
+    public string FileOf(XElement element) => element.Document is { } document ? fileName(document) : string.Empty;
+
+    public string FileOf(string fileBase) => documents(fileBase).FirstOrDefault() is { } document ? fileName(document) : fileBase + ".xml";
+
+    public IEnumerable<XElement> Entries(EntityKind kind) => Shallow(kind.FileBase, kind.Element);
+
+    public bool EntryExists(EntityKind kind, string id) =>
+        kind.IdField is { } field && Entries(kind).Any(e => Same(e.Element(field)?.Value, id));
+
+    public XElement? FindEntry(EntityKind kind, string id) =>
+        kind.IdField is { } field ? Entries(kind).FirstOrDefault(e => Same(e.Element(field)?.Value, id)) : null;
+
+    public IEnumerable<XElement> Groups(GroupKind kind) => Shallow(kind.FileBase, kind.Element);
+
     public XElement? FindGroup(GroupKind kind, string id) =>
-        documents(kind.FileBase)
-            .SelectMany(d => d.Root?.Descendants(kind.Element) ?? [])
-            .FirstOrDefault(e => string.Equals(e.Element(kind.IdElement)?.Value.Trim(), id, StringComparison.OrdinalIgnoreCase));
+        Groups(kind).FirstOrDefault(e => Same(e.Element(kind.IdElement)?.Value, id));
 
     public bool GroupExists(GroupKind kind, string id) => FindGroup(kind, id) is not null;
 
-    public bool EntryExists(EntityKind kind, string id) =>
-        kind.IdField is { } field && documents(kind.FileBase)
-            .SelectMany(d => d.Root?.Descendants(kind.Element) ?? [])
-            .Any(e => string.Equals(e.Element(field)?.Value.Trim(), id, StringComparison.OrdinalIgnoreCase));
+    public static int GroupSize(XElement group) =>
+        group.Elements().Select(e => e.Elements().Count()).DefaultIfEmpty(0).Max();
 
-    public IEnumerable<XElement> Entries(EntityKind kind) =>
-        documents(kind.FileBase).SelectMany(d => d.Root?.Descendants(kind.Element) ?? []);
+    public IReadOnlyList<string> Values(EntityKind kind, string field) =>
+        [.. Entries(kind).Select(e => e.Element(field)?.Value.Trim() ?? string.Empty)
+            .Where(v => v.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.CurrentCultureIgnoreCase)];
 
-    public XElement Create(EntityKind kind, EntryPlan plan)
+    public IReadOnlyList<(string Prefix, string Color)> Colors() =>
+        [.. Entries(CreatorCatalog.Gang).Concat(Entries(CreatorCatalog.Agency))
+            .Select(e => (Prefix: e.Element(CreatorCatalog.ColorPrefixField)?.Value.Trim() ?? string.Empty, Color: e.Element(CreatorCatalog.ColorField)?.Value.Trim() ?? string.Empty))
+            .Where(c => c.Color.Length > 0)
+            .DistinctBy(c => c.Color, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c.Color, StringComparer.CurrentCultureIgnoreCase)];
+
+    public ILookup<string, string> Owners(AreaRows rows) =>
+        Rows(rows).ToLookup(r => r.Element(rows.KeyField)?.Value.Trim() ?? string.Empty, r => r.Element(rows.OwnerField)?.Value.Trim() ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyList<string> Owned(AreaRows rows, string owner) =>
+        [.. Rows(rows).Where(r => Same(r.Element(rows.OwnerField)?.Value, owner)).Select(r => r.Element(rows.KeyField)?.Value.Trim() ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase)];
+
+    public XElement CopyGroup(GroupKind kind, string sourceId, string newId)
     {
-        var copies = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var link in plan.Links.Where(l => l.Copy && l.TemplateValue.Length > 0))
-        {
-            var key = link.Link.Kind.Element + "|" + link.TemplateValue;
-            if (copies.ContainsKey(key) || FindGroup(link.Link.Kind, link.TemplateValue) is not { } group)
-            {
-                continue;
-            }
-
-            var copy = XmlEditing.CloneAfter(group);
-            SetChild(copy, link.Link.Kind.IdElement, link.NewId);
-            copies[key] = link.NewId;
-        }
-
-        var entry = new XElement(plan.Template);
-        XmlEditing.Append(plan.Template.Parent!, entry, plan.Template.Name);
-        if (kind.IdField is { } idField && plan.NewId is { } id)
-        {
-            SetChild(entry, idField, id);
-        }
-
-        foreach (var (field, value) in plan.Values)
-        {
-            SetChild(entry, field, value);
-        }
-
-        foreach (var link in plan.Links)
-        {
-            SetChild(entry, link.Link.Field, link.Copy ? link.NewId : link.TemplateValue);
-        }
-
-        if (plan.Placement is { } placement)
-        {
-            Place(entry, placement);
-        }
-
-        return entry;
+        var source = FindGroup(kind, sourceId) ?? throw new InvalidOperationException($"{sourceId} not found");
+        var copy = XmlEditing.CloneAfter(source);
+        SetChild(copy, kind.IdElement, newId);
+        return copy;
     }
 
-    public XElement? CreateDen(XElement templateDen, string gangId, IReadOnlyDictionary<string, string> values, Placement placement, LinkPlan? menu)
+    public static void Insert(XElement template, XElement entry) => XmlEditing.Append(template.Parent!, entry, template.Name);
+
+    public int AddRows(AreaRows rows, string owner, string templateOwner, IEnumerable<string> keys)
     {
-        var plan = new EntryPlan(templateDen, null, values, menu is null ? [] : [menu], placement);
-        var den = Create(CreatorCatalog.Location(CreatorCatalog.GangDenElement), plan);
-        SetChild(den, CreatorCatalog.AssociationField, gangId);
-        return den;
-    }
-
-    public int AddTerritories(string gangId, IEnumerable<string> zones) =>
-        AddRows(CreatorCatalog.GangTerritoriesFile, "GangTerritory", zones, row =>
-        {
-            SetChild(row.Element, ZoneField, row.Key);
-            SetChild(row.Element, GangField, gangId);
-        }, _ => true);
-
-    public int AddZoneJurisdictions(string agencyId, string templateAgencyId, IEnumerable<string> zones) =>
-        AddRows(CreatorCatalog.ZoneJurisdictionsFile, "ZoneJurisdiction", zones, row =>
-        {
-            SetChild(row.Element, ZoneField, row.Key);
-            SetChild(row.Element, AgencyField, agencyId);
-            SetChild(row.Element, PriorityField, "0");
-        }, e => e.Element(AgencyField)?.Value == templateAgencyId);
-
-    public int AddCountyJurisdictions(string agencyId, string templateAgencyId, IEnumerable<string> counties) =>
-        AddRows(CreatorCatalog.CountyJurisdictionsFile, "CountyJurisdiction", counties, row =>
-        {
-            SetChild(row.Element, CountyField, row.Key);
-            SetChild(row.Element, AgencyInitialsField, agencyId);
-            SetChild(row.Element, PriorityField, "0");
-        }, e => e.Element(AgencyInitialsField)?.Value == templateAgencyId);
-
-    private int AddRows(string fileBase, string element, IEnumerable<string> keys, Action<(XElement Element, string Key)> fill, Func<XElement, bool> preferred)
-    {
-        var rows = documents(fileBase).FirstOrDefault()?.Root?.Elements(element).ToList() ?? [];
-        var template = rows.FirstOrDefault(preferred) ?? rows.FirstOrDefault();
+        var existing = Rows(rows).ToList();
+        var template = existing.FirstOrDefault(e => Same(e.Element(rows.OwnerField)?.Value, templateOwner)) ?? existing.FirstOrDefault();
         if (template is null)
         {
             return 0;
@@ -127,32 +79,82 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
         {
             var row = new XElement(template);
             XmlEditing.Append(template.Parent!, row, template.Name);
-            fill((row, key));
+            SetChild(row, rows.KeyField, key);
+            SetChild(row, rows.OwnerField, owner);
+            foreach (var (field, value) in rows.Defaults)
+            {
+                SetChild(row, field, value);
+            }
+
             count++;
         }
 
         return count;
     }
 
-    private static void Place(XElement entry, Placement placement)
+    public static IReadOnlyList<string> ListValues(XElement entry, string field) =>
+        [.. entry.Element(field)?.Elements().Select(e => e.Value.Trim()).Where(v => v.Length > 0) ?? []];
+
+    public static void SetList(XElement entry, string field, IEnumerable<string> values)
     {
-        if (entry.Element(PositionElement) is { } position)
+        if (entry.Element(field) is not { } list)
         {
-            SetChild(position, "X", Number(placement.X));
-            SetChild(position, "Y", Number(placement.Y));
-            SetChild(position, "Z", Number(placement.Z));
+            return;
         }
 
-        SetChild(entry, HeadingElement, Number(placement.Heading));
+        var wanted = values.ToList();
+        if (ListValues(entry, field).SequenceEqual(wanted, StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        var (outer, inner, newline) = Indents(list);
+        list.RemoveNodes();
+        foreach (var value in wanted)
+        {
+            list.Add(new XText(newline + inner), new XElement(ListItem, value));
+        }
+
+        if (wanted.Count > 0)
+        {
+            list.Add(new XText(newline + outer));
+        }
     }
 
-    private static string Number(double value) => value.ToString("0.####", CultureInfo.InvariantCulture);
-
-    private static void SetChild(XElement parent, string name, string value)
+    public static void AddToList(XElement entry, string field, string value)
     {
-        if (parent.Element(name) is { } child && !child.HasElements)
+        var current = ListValues(entry, field);
+        if (!current.Contains(value, StringComparer.OrdinalIgnoreCase))
+        {
+            SetList(entry, field, [.. current, value]);
+        }
+    }
+
+    public static void SetChild(XElement parent, string name, string value)
+    {
+        if (parent.Element(name) is { HasElements: false } child)
         {
             XmlEditing.SetValue(child, value);
         }
     }
+
+    private IEnumerable<XElement> Shallow(string fileBase, string element) =>
+        documents(fileBase)
+            .SelectMany(d => d.Root?.Elements() ?? [])
+            .SelectMany(c => c.Name.LocalName == element ? Enumerable.Repeat(c, 1) : c.Elements(element));
+
+    private IEnumerable<XElement> Rows(AreaRows rows) => documents(rows.FileBase).Take(1).SelectMany(d => d.Root?.Elements(rows.Element) ?? []);
+
+    private static (string Outer, string Inner, string Newline) Indents(XElement list)
+    {
+        var whitespace = list.PreviousNode is XText { Value: var text } && string.IsNullOrWhiteSpace(text) ? text : "\n";
+        var newline = whitespace.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var outer = whitespace[(whitespace.LastIndexOf('\n') + 1)..];
+        var step = list.Parent?.PreviousNode is XText { Value: var parentText } && string.IsNullOrWhiteSpace(parentText)
+            ? outer.Length - parentText[(parentText.LastIndexOf('\n') + 1)..].Length
+            : 2;
+        return (outer, outer + new string(' ', Math.Max(step, 1)), newline);
+    }
+
+    private static bool Same(string? value, string id) => string.Equals(value?.Trim(), id, StringComparison.OrdinalIgnoreCase);
 }

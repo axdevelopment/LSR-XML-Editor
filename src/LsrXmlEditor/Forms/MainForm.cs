@@ -1,11 +1,13 @@
 using System.Runtime;
 using System.Xml.Linq;
 using LsrXmlEditor.Controls;
+using LsrXmlEditor.Core.Creators;
 using LsrXmlEditor.Core.Files;
 using LsrXmlEditor.Core.Storage;
 using LsrXmlEditor.Core.Text;
 using LsrXmlEditor.Core.Workspace;
 using LsrXmlEditor.Core.Xml;
+using LsrXmlEditor.Forms.Creator;
 using LsrXmlEditor.Infrastructure;
 using LsrXmlEditor.PropertyModel;
 using LsrXmlEditor.Services;

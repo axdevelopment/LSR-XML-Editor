@@ -1,8 +1,8 @@
+using System.Globalization;
 using System.Xml.Linq;
 using LsrXmlEditor.Core.Creators;
 using LsrXmlEditor.Core.Text;
 using LsrXmlEditor.Core.Xml;
-using LsrXmlEditor.Forms;
 
 namespace LsrXmlEditor.Services;
 
@@ -14,7 +14,7 @@ public sealed class CreatorSession
     private const string ZoneCodeField = "InternalGameName";
     private const string ZoneNameField = "DisplayName";
     private const string CountyField = "CountyID";
-    private const string GangDensContainer = "GangDens";
+    private const string SaveElement = "GameSave";
 
     private static readonly string[] Files =
     [
@@ -29,16 +29,23 @@ public sealed class CreatorSession
         CreatorCatalog.ZonesFile,
         CreatorCatalog.GangTerritoriesFile,
         CreatorCatalog.ZoneJurisdictionsFile,
-        CreatorCatalog.CountyJurisdictionsFile
+        CreatorCatalog.CountyJurisdictionsFile,
+        CreatorCatalog.SaveGamesFile
     ];
 
     private readonly Dictionary<string, List<XmlConfigDocument>> _documents;
+    private readonly Dictionary<XDocument, string> _names = [];
 
     private CreatorSession(Dictionary<string, List<XmlConfigDocument>> documents)
     {
         _documents = documents;
-        Engine = new CreatorEngine(Documents);
-        Data = new CreatorData(LocationTypes(), Zones(), Counties());
+        foreach (var document in documents.Values.SelectMany(d => d))
+        {
+            _names[document.Document] = Path.GetFileName(document.FilePath);
+        }
+
+        Engine = new CreatorEngine(Documents, d => _names.GetValueOrDefault(d, string.Empty));
+        Data = new CreatorData(LocationTypes(), Zones(), SavedPositions());
     }
 
     public CreatorEngine Engine { get; }
@@ -91,25 +98,49 @@ public sealed class CreatorSession
     private IReadOnlyList<XDocument> Documents(string fileBase) =>
         _documents.TryGetValue(fileBase, out var list) ? [.. list.Select(d => d.Document)] : [];
 
+    private IEnumerable<XElement> FirstRoot(string fileBase) =>
+        Documents(fileBase).Take(1).SelectMany(d => d.Root?.Elements() ?? []);
+
     private IReadOnlyList<LocationType> LocationTypes() =>
-        [.. Documents(CreatorCatalog.LocationsFile).Take(1)
-            .SelectMany(d => d.Root?.Elements() ?? [])
-            .Where(c => c.Name.LocalName != GangDensContainer && c.Elements().Any())
-            .Select(c => new LocationType(c.Name.LocalName, c.Elements().First().Name.LocalName, DisplayNames.Humanize(c.Name.LocalName)))
+        [.. FirstRoot(CreatorCatalog.LocationsFile)
+            .Where(c => c.Name.LocalName != CreatorCatalog.GangDensContainer && c.Elements().Any(e => e.Element(CreatorCatalog.NameField) is not null))
+            .Select(c => new LocationType(c.Name.LocalName, c.Elements().First().Name.LocalName, DisplayNames.Humanize(c.Name.LocalName), c.Elements().Count()))
             .OrderBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase)];
 
-    private IReadOnlyList<(string Code, string Name)> Zones() =>
-        [.. Documents(CreatorCatalog.ZonesFile).Take(1)
-            .SelectMany(d => d.Root?.Elements(ZoneElement) ?? [])
-            .Select(z => (Code: z.Element(ZoneCodeField)?.Value.Trim() ?? string.Empty, Name: z.Element(ZoneNameField)?.Value.Trim() ?? string.Empty))
+    private IReadOnlyList<ZoneInfo> Zones() =>
+        [.. FirstRoot(CreatorCatalog.ZonesFile)
+            .Where(z => z.Name.LocalName == ZoneElement)
+            .Select(z => new ZoneInfo(Text(z, ZoneCodeField), Text(z, ZoneNameField), Text(z, CountyField)))
             .Where(z => z.Code.Length > 0)
+            .DistinctBy(z => z.Code, StringComparer.OrdinalIgnoreCase)
             .OrderBy(z => z.Name, StringComparer.CurrentCultureIgnoreCase)];
 
-    private IReadOnlyList<string> Counties() =>
-        [.. Documents(CreatorCatalog.ZonesFile).Take(1)
-            .SelectMany(d => d.Root?.Elements(ZoneElement) ?? [])
-            .Select(z => z.Element(CountyField)?.Value.Trim() ?? string.Empty)
-            .Where(c => c.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Order(StringComparer.CurrentCultureIgnoreCase)];
+    private IReadOnlyList<SavedPosition> SavedPositions() =>
+        [.. FirstRoot(CreatorCatalog.SaveGamesFile)
+            .Where(s => s.Name.LocalName == SaveElement)
+            .Select(Saved)
+            .OfType<SavedPosition>()];
+
+    private static SavedPosition? Saved(XElement save)
+    {
+        var position = save.Element("PlayerPosition");
+        if (position is null || !TryNumber(position, "X", out var x) || !TryNumber(position, "Y", out var y) || !TryNumber(position, "Z", out var z))
+        {
+            return null;
+        }
+
+        TryNumber(save, "PlayerHeading", out var heading);
+        var title = $"Save {Text(save, "SaveNumber")}";
+        if (DateTime.TryParse(Text(save, "SaveDateTime"), CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            title += $" ({date.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)})";
+        }
+
+        return new SavedPosition(title, new Placement(x, y, z, heading));
+    }
+
+    private static bool TryNumber(XElement parent, string name, out double value) =>
+        double.TryParse(parent.Element(name)?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+
+    private static string Text(XElement parent, string name) => parent.Element(name)?.Value.Trim() ?? string.Empty;
 }

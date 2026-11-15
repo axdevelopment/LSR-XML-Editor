@@ -15,11 +15,17 @@ Runs completely offline – no auto-updater, no downloads, no telemetry.
 
 ## What's new
 
-**Creators** for gangs, gang dens, shops/locations and police agencies (*Create* in the toolbar). Pick an existing entry as template, enter the new ID and names, and decide per linked group (peds, vehicles, weapons, menus …) whether it gets copied with a new ID or shared. Gangs can get a den and territory right away, agencies their jurisdiction. One Ctrl+Z undoes the whole thing.
+**Creators** for gangs, gang dens, shops/locations and police agencies (*Create* in the toolbar) – a step-by-step wizard:
+
+- type a name, the ID and all other names fill in by themselves – the remaining steps are optional
+- per linked group (peds, vehicles, weapons, heads, menus) choose an own copy or share any existing group
+- place dens and shops from a Los Santos RED save game or pasted coordinates; spawn, parking and camera points move and turn along
+- friends & enemies (optionally mutual), territory, jurisdiction and every other setting of the new entry
+- live checks and a summary of what lands in which file – one Ctrl+Z undoes the whole thing
 
 | | |
 | --- | --- |
-| ![Gang creator](docs/creator-gang.png) | ![Shop creator](docs/creator-shop.png) |
+| ![Gang creator](docs/creator-gang.png) | ![Gang den step](docs/creator-den.png) |
 
 ## Features
 
