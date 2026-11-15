@@ -2,35 +2,18 @@
 
 # LSR XML Editor
 
-**Version 0.3 – beta**
+**Version 0.4**
 
-A Windows editor for the XML configuration files of Los Santos RED (GTA V mod), with an optional 3D viewer for peds, vehicles, weapons, items and animations.
+A Windows editor for the XML configuration files of Los Santos RED (GTA V mod), with creators for gangs, dens, shops and police agencies and an optional 3D viewer for peds, vehicles, weapons, items and animations.
 Runs completely offline – no auto-updater, no downloads, no telemetry.
 
-> **Beta:** this is an early release. It has only been tested with the stock GTA V content and the default LSR configs, **not with custom content** such as add-on vehicles, weapons, peds or clothing. Please back up your configs before editing.
->
 > **Tested with:** GTA V (Legacy, Steam) 1.0.3889.0 · Los Santos RED 1.0.0.562 · RAGE Plugin Hook 1.131.1424.17745
+>
+> Only tested with the stock GTA V content and the default LSR configs, **not with custom content** such as add-on vehicles, weapons, peds or clothing. Please back up your configs before editing.
 >
 > Found a bug? Please report it as a [GitHub issue](../../issues) or on Discord to **onlyardo**.
 
 ![Editor](docs/editor.png)
-
-## What's new
-
-**Creators** for gangs, gang dens, shops/locations and police agencies (*Create* in the toolbar) – a step-by-step wizard:
-
-- type a name, the ID and all other names fill in by themselves – the remaining steps are optional
-- per linked group (peds, vehicles, weapons, heads, menus) choose an own copy or share any existing group
-- every group shows who else uses it (hover "used by"), so you can see where a menu or ped group is in use
-- menus step: see and change what the player can buy and sell (prices, stock, illicit), add or remove items – on an own copy, the original stays untouched
-- shops and other places keep their owner (gang, agency, organization) or get a new one; spawns inside switch over too, and staff peds/weapons are linked like any other group
-- place dens and shops from a Los Santos RED save game or pasted coordinates; spawn, parking and camera points move and turn along
-- friends & enemies (optionally mutual), territory, jurisdiction and every other setting of the new entry
-- live checks and a summary of what lands in which file – one Ctrl+Z undoes the whole thing
-
-| | |
-| --- | --- |
-| ![Gang creator](docs/creator-gang.png) | ![Gang den step](docs/creator-den.png) |
 
 ## Features
 
@@ -40,53 +23,42 @@ Runs completely offline – no auto-updater, no downloads, no telemetry.
 - Values that refer to GTA V itself (relationship groups, model names, animations, zone codes, voices) are locked with a padlock and can be unlocked on purpose.
 - Edit several entries at once, duplicate or delete entries and list items.
 - Undo and redo the last 10 changes (Ctrl+Z / Ctrl+Y).
-- Creators for gangs, gang dens, shops/locations and police agencies based on existing entries.
 - Search across all files and jump straight to the field (Ctrl+Shift+F).
 - Automatic backup before every save, restore via *Tools → Backups*.
 - Change log: every save is recorded as a diff and can be reapplied after an LSR update (*Tools → Change log*).
 - Formatting is preserved: unchanged files are written back byte for byte.
 
-### Screenshots
+## Creators
+
+*Create* in the toolbar opens a step-by-step wizard for a new gang, gang den, shop/location or police agency, based on an existing entry:
+
+- type a name, the ID and all other names fill in by themselves – the remaining steps are optional
+- per linked group (peds, vehicles, weapons, heads, menus, staff) choose an own copy or share any existing group; hover "used by" to see who else uses it
+- menus: see and change what the player can buy and sell (prices, stock, illicit), add or remove items – on an own copy, the original stays untouched
+- places keep their owner (gang, agency, organization) or get a new one, spawns inside switch over too
+- place dens and shops from a Los Santos RED save game or pasted coordinates; spawn, parking and camera points move and turn along
+- friends & enemies (optionally mutual), territory, jurisdiction and every other setting of the new entry
+- live checks and a summary of what lands in which file – one Ctrl+Z undoes the whole thing
 
 | | |
 | --- | --- |
-| ![Multi edit](docs/multi-edit.png)<br>Editing several entries at once | ![XML view](docs/xml-view.png)<br>Raw XML of an entry |
+| ![Gang den step](docs/creator-den.png) | ![Menus step](docs/creator-menus.png) |
 
 ## 3D viewer
 
 Turn on **3D View** in the toolbar (or press Ctrl+3). Clicking an entry with a model or animation then opens the 3D view next to the property grid. It follows the selection in the list and in the property grid, so every model of a list – including the items of a shop menu – can be inspected. Turning the button off closes the view and frees its memory. Everything is read directly from your GTA V installation, nothing is modified there.
 
-### Ped viewer
-
-Outfits, save games and dispatchable peds with every clothing component (drawable/texture IDs as used by LSR), head blend, face overlays and hair colors.
-
-![Ped viewer](docs/viewer-ped.png)
-
-### Vehicle viewer
-
-Vehicles with wheels, glass, lights and paint (`RequiredPrimaryColorID` / `RequiredSecondaryColorID`, adjustable in the viewer).
-
-![Vehicle viewer](docs/viewer-vehicle.png)
-
-### Weapon viewer
-
-`weapon_*` names are resolved to their world model, including the weapon's default tint.
-
-![Weapon viewer](docs/viewer-weapon.png)
-
-### Item viewer
-
-Props and items from `PhysicalItems`, `ModItems` and interiors. Items of a shop menu are resolved through `ModItems.xml`, so clicking a menu item shows its model.
-
-![Shop menu item](docs/viewer-shop-item.png)
-
-### Animations and gestures
-
-Dances and gestures are played on the shown ped.
-
-![Animation viewer](docs/viewer-animation.gif)
+- **Peds:** outfits, save games and dispatchable peds with every clothing component (drawable/texture IDs as used by LSR), head blend, face overlays and hair colors
+- **Vehicles:** wheels, glass, lights and paint (`RequiredPrimaryColorID` / `RequiredSecondaryColorID`, adjustable in the viewer)
+- **Weapons:** `weapon_*` names are resolved to their world model, including the weapon's default tint
+- **Items:** props and items from `PhysicalItems`, `ModItems` and interiors; items of a shop menu are resolved through `ModItems.xml`
+- **Animations:** dances and gestures are played on the shown ped
 
 Hair, make-up and vehicle paint colors use approximate palettes.
+
+| | |
+| --- | --- |
+| ![Ped viewer](docs/viewer-ped.png) | ![Vehicle viewer](docs/viewer-vehicle.png) |
 
 ## Download
 

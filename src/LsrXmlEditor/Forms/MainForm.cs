@@ -333,7 +333,7 @@ public sealed class MainForm : Form
 
         var help = new ToolStripMenuItem("&Help");
         help.DropDownItems.Add(MenuItem(new Command("&About", () => Dialogs.Info(this,
-            $"LSR XML Editor {Application.ProductVersion}\n\nEditor for the XML configuration files of Los Santos RED.\nA backup is created automatically before every save.\nThe program works completely offline.\n\nThis is a beta and has not been tested with custom content yet.\nPlease report bugs as a GitHub issue or on Discord (onlyardo).\n\nmade with ❤️ from ardo"))));
+            $"LSR XML Editor {Application.ProductVersion}\n\nEditor for the XML configuration files of Los Santos RED.\nA backup is created automatically before every save.\nThe program works completely offline.\n\nNot tested with custom content (add-on vehicles, peds, weapons) yet.\nPlease report bugs as a GitHub issue or on Discord (onlyardo).\n\nmade with ❤️ from ardo"))));
 
         menu.Items.AddRange([file, edit, view, tools, help]);
 

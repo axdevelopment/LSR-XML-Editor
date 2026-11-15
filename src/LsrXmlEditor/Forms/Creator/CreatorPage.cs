@@ -86,7 +86,7 @@ internal abstract class CreatorPage : TableLayoutPanel
     protected Label AddSection(string title, string? hint = null)
     {
         _sectionFont ??= new Font(Font, FontStyle.Bold);
-        var label = new Label { Text = title, AutoSize = true, Font = _sectionFont, Margin = new Padding(0, RowCount == 0 ? 0 : 14, 0, 4) };
+        var label = new Label { Text = title, AutoSize = true, UseMnemonic = false, Font = _sectionFont, Margin = new Padding(0, RowCount == 0 ? 0 : 14, 0, 4) };
         AddSpanning(label);
         if (hint is not null)
         {
@@ -102,6 +102,7 @@ internal abstract class CreatorPage : TableLayoutPanel
         {
             Text = text,
             AutoSize = true,
+            UseMnemonic = false,
             ForeColor = SystemColors.GrayText,
             Margin = new Padding(0, 0, 0, 6),
             MaximumSize = new Size(LogicalToDeviceUnits(640), 0)
