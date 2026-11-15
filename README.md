@@ -2,7 +2,7 @@
 
 # LSR XML Editor
 
-**Version 0.2 – beta**
+**Version 0.3 – beta**
 
 A Windows editor for the XML configuration files of Los Santos RED (GTA V mod), with an optional 3D viewer for peds, vehicles, weapons, items and animations.
 Runs completely offline – no auto-updater, no downloads, no telemetry.
