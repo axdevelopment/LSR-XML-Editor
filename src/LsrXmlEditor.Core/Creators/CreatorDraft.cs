@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using LsrXmlEditor.Core.Xml;
 
 namespace LsrXmlEditor.Core.Creators;
 
@@ -8,6 +9,7 @@ public enum CreatorStep
     Linked,
     Location,
     Den,
+    Menus,
     Relations,
     Area,
     Settings,
@@ -20,11 +22,26 @@ public sealed record CreatorChange(string File, string Text);
 
 public sealed class LinkChoice(LinkField link, string templateId)
 {
+    private string _sourceId = templateId;
+
     public LinkField Link { get; } = link;
 
     public string TemplateId { get; } = templateId;
 
-    public string SourceId { get; set; } = templateId;
+    public string SourceId
+    {
+        get => _sourceId;
+        set
+        {
+            if (!string.Equals(_sourceId, value, StringComparison.OrdinalIgnoreCase))
+            {
+                _sourceId = value;
+                Content = null;
+            }
+        }
+    }
+
+    public XElement? Content { get; set; }
 
     public bool Copy { get; set; } = link.CopyByDefault && templateId.Length > 0;
 
@@ -37,6 +54,8 @@ public sealed class LinkChoice(LinkField link, string templateId)
 
 public sealed class EntryDraft
 {
+    private string _appliedOwner;
+
     public EntryDraft(EntityKind kind, XElement template)
     {
         Kind = kind;
@@ -46,6 +65,10 @@ public sealed class EntryDraft
         Placement = Origin;
         AttachedPoints = Relocation.CountAttached(template);
         Links = [.. kind.Links.Where(l => template.Element(l.Field) is { HasElements: false }).Select(l => new LinkChoice(l, Original(l.Field)))];
+        HasOwner = template.Element(CreatorCatalog.AssociationField) is { HasElements: false };
+        OriginalOwner = Original(CreatorCatalog.AssociationField);
+        Owner = OriginalOwner;
+        _appliedOwner = OriginalOwner;
     }
 
     public EntityKind Kind { get; }
@@ -63,6 +86,14 @@ public sealed class EntryDraft
     public bool MoveAttached { get; set; } = true;
 
     public int AttachedPoints { get; }
+
+    public bool HasOwner { get; }
+
+    public string OriginalOwner { get; }
+
+    public string Owner { get; set; }
+
+    public bool OwnerChanged => HasOwner && !string.Equals(Owner.Trim(), OriginalOwner, StringComparison.OrdinalIgnoreCase);
 
     public string Original(string field) => Template.Element(field)?.Value.Trim() ?? string.Empty;
 
@@ -83,6 +114,30 @@ public sealed class EntryDraft
         {
             Relocation.Move(Entry, placement, MoveAttached);
         }
+
+        ApplyOwner();
+    }
+
+    private void ApplyOwner()
+    {
+        if (!HasOwner)
+        {
+            return;
+        }
+
+        var owner = Owner.Trim();
+        Set(CreatorCatalog.AssociationField, owner);
+        if (_appliedOwner.Length == 0 || owner.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var spawn in Entry.Descendants(CreatorCatalog.SpawnAssociationField).Where(e => !e.HasElements && string.Equals(e.Value.Trim(), _appliedOwner, StringComparison.OrdinalIgnoreCase)))
+        {
+            XmlEditing.SetValue(spawn, owner);
+        }
+
+        _appliedOwner = owner;
     }
 }
 
@@ -122,7 +177,6 @@ public sealed class CreatorDraft
 
         if (mode == CreatorMode.GangDen)
         {
-            OwnerGangId = Main.Original(CreatorCatalog.AssociationField);
             PrimaryDen = false;
         }
     }
@@ -139,7 +193,11 @@ public sealed class CreatorDraft
 
     public string TemplateId { get; }
 
-    public string? OwnerGangId { get; set; }
+    public string? OwnerGangId
+    {
+        get => Main.Owner;
+        set => Main.Owner = value ?? string.Empty;
+    }
 
     public bool PrimaryDen { get; set; }
 
@@ -164,7 +222,32 @@ public sealed class CreatorDraft
     public IEnumerable<LinkChoice> AllLinks =>
         DenEnabled && Den is not null ? Main.Links.Concat(Den.Links) : Main.Links;
 
+    public IEnumerable<(LinkChoice Link, bool Den)> MenuLinks =>
+        Main.Links.Select(l => (Link: l, Den: false))
+            .Concat(DenEnabled && Den is not null ? Den.Links.Select(l => (Link: l, Den: true)) : [])
+            .Where(l => CreatorCatalog.IsMenu(l.Link.Link.Kind));
+
+    public bool HasMenus => Main.Links.Concat(Den?.Links ?? []).Any(l => CreatorCatalog.IsMenu(l.Link.Kind));
+
     public bool IsManual(string field) => _manual.Contains(field);
+
+    public XElement? Group(LinkChoice link) =>
+        link.Copy && link.Content is { } content ? content : Engine.FindGroup(link.Link.Kind, link.SourceId);
+
+    public XElement? EditableGroup(LinkChoice link)
+    {
+        if (!link.Copy)
+        {
+            return null;
+        }
+
+        if (link.Content is null && Engine.FindGroup(link.Link.Kind, link.SourceId) is { } source)
+        {
+            link.Content = new XElement(source);
+        }
+
+        return link.Content;
+    }
 
     public void UseDenTemplate(XElement template)
     {
@@ -302,6 +385,27 @@ public sealed class CreatorDraft
             }
         }
 
+        foreach (var (link, den) in MenuLinks)
+        {
+            if (Group(link) is not { } group)
+            {
+                continue;
+            }
+
+            var missing = MenuEditing.ItemNames(group).Where(n => !Engine.ItemExists(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (missing.Count > 0)
+            {
+                var more = missing.Count > 5 ? " …" : string.Empty;
+                problems.Add(new(CreatorStep.Menus, $"{MenuTitle(link, den)}: {string.Join(", ", missing.Take(5))}{more} not found in ModItems.xml.", false));
+            }
+        }
+
+        AddInteriorProblem(problems, Main, CreatorStep.Basics);
+        if (Mode == CreatorMode.Gang && DenEnabled && Den is not null)
+        {
+            AddInteriorProblem(problems, Den, CreatorStep.Den);
+        }
+
         if (Main.Placement is { } placement && Main.Origin is { } origin && placement.SameSpot(origin))
         {
             problems.Add(new(CreatorStep.Location, $"The position is still the one of \"{Main.Original(CreatorCatalog.NameField)}\" – the new {Kind.Title} would sit on top of it.", false));
@@ -338,6 +442,10 @@ public sealed class CreatorDraft
             case CreatorMode.GangDen:
                 changes.Add(new(mainFile, $"Owned by {OwnerGangId}{(PrimaryDen ? " as its main den" : string.Empty)}"));
                 break;
+            case CreatorMode.Location when Main.OwnerChanged:
+                var owner = Main.Owner.Trim();
+                changes.Add(new(mainFile, owner.Length > 0 ? $"Run by {owner} instead of {Nobody(Main.OriginalOwner)}, spawns inside switch over too" : $"No owner (was {Main.OriginalOwner})"));
+                break;
             case CreatorMode.Gang:
                 AddGangChanges(changes, mainFile, label);
                 break;
@@ -357,7 +465,7 @@ public sealed class CreatorDraft
         {
             if (copies.Add(link.Link.Kind.Element + "|" + link.NewId.Trim()))
             {
-                Engine.CopyGroup(link.Link.Kind, link.SourceId, link.NewId.Trim());
+                Engine.CopyGroup(link.Link.Kind, link.SourceId, link.NewId.Trim(), link.Content);
             }
         }
 
@@ -366,7 +474,6 @@ public sealed class CreatorDraft
         switch (Mode)
         {
             case CreatorMode.GangDen:
-                Main.Set(CreatorCatalog.AssociationField, OwnerGangId ?? string.Empty);
                 Main.Set(CreatorCatalog.PrimaryDenField, PrimaryDen ? TrueText : FalseText);
                 break;
             case CreatorMode.Gang:
@@ -381,8 +488,8 @@ public sealed class CreatorDraft
         {
             if (DenEnabled && Den is not null)
             {
+                Den.Owner = id;
                 Den.Apply();
-                Den.Set(CreatorCatalog.AssociationField, id);
                 Den.Set(CreatorCatalog.PrimaryDenField, TrueText);
                 CreatorEngine.Insert(Den.Template, Den.Entry);
             }
@@ -475,8 +582,12 @@ public sealed class CreatorDraft
         {
             if (link.Copy)
             {
-                var size = Engine.FindGroup(link.Link.Kind, link.SourceId) is { } group ? CreatorEngine.GroupSize(group) : 0;
-                changes.Add(new(Engine.FileOf(link.Link.Kind.FileBase), $"New group {link.NewId.Trim()} for {link.Link.Label.ToLowerInvariant()} – copy of {link.SourceId} ({size} {(size == 1 ? "entry" : "entries")})"));
+                var group = Group(link);
+                var menu = CreatorCatalog.IsMenu(link.Link.Kind);
+                var size = group is null ? 0 : menu ? MenuEditing.ItemCount(group) : CreatorEngine.GroupSize(group);
+                var noun = menu ? size == 1 ? "item" : "items" : size == 1 ? "entry" : "entries";
+                var edited = menu && link.Content is not null ? ", items edited" : string.Empty;
+                changes.Add(new(Engine.FileOf(link.Link.Kind.FileBase), $"New group {link.NewId.Trim()} for {link.Link.Label.ToLowerInvariant()} – copy of {link.SourceId} ({size} {noun}{edited})"));
             }
             else
             {
@@ -506,6 +617,24 @@ public sealed class CreatorDraft
             changes.Add(new(Engine.FileOf(rows.FileBase), $"{keys.Count} {noun}{(keys.Count == 1 ? string.Empty : "s")}: {list}"));
         }
     }
+
+    public static string MenuTitle(LinkChoice link, bool den) => den ? "Den " + link.Link.Label.ToLowerInvariant() : link.Link.Label;
+
+    private void AddInteriorProblem(List<CreatorProblem> problems, EntryDraft draft, CreatorStep step)
+    {
+        if (!draft.OwnerChanged || draft.OriginalOwner.Length == 0)
+        {
+            return;
+        }
+
+        var interior = draft.Get(CreatorCatalog.InteriorField).Trim();
+        if (interior.Length > 0 && interior != "-1" && Engine.InteriorAssociations(interior).Contains(draft.OriginalOwner, StringComparer.OrdinalIgnoreCase))
+        {
+            problems.Add(new(step, $"Interior {interior} still spawns {draft.OriginalOwner} people inside – it is shared in Interiors.xml and stays as it is.", false));
+        }
+    }
+
+    private static string Nobody(string owner) => owner.Length > 0 ? owner : "nobody";
 
     private static string Describe(EntryDraft draft) =>
         draft.Kind.IdField is { } field ? draft.Original(field) : $"\"{draft.Original(CreatorCatalog.NameField)}\"";

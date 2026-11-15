@@ -68,6 +68,13 @@ try
 
     Check(true, "roundtrip + count checks completed");
 
+    var quoted = Path.Combine(work, "quoted.xml");
+    File.WriteAllText(quoted, "<?xml version='1.0' encoding='utf-8'?>\r\n<Root>\r\n  <Value>1</Value>\r\n</Root>\r\n");
+    var quotedDocument = XmlConfigDocument.Load(quoted);
+    XmlEditing.SetValue(quotedDocument.Root.Element("Value")!, "2");
+    quotedDocument.WriteTo(quoted);
+    Check(File.ReadAllText(quoted) == "<?xml version='1.0' encoding='utf-8'?>\r\n<Root>\r\n  <Value>2</Value>\r\n</Root>\r\n", "single-quoted declaration kept after an edit");
+
     var folder = Path.Combine(work, "data");
     Directory.CreateDirectory(folder);
     File.Copy(Path.Combine(source, "Agencies.xml"), Path.Combine(folder, "Agencies.xml"));
@@ -217,6 +224,28 @@ try
     CreatorEngine.AddToList(relations.Root!.Element("Gang")!, "EnemyGangs", "B");
     var listXml = relations.Root.Element("Gang")!.Element("EnemyGangs")!.ToString(SaveOptions.DisableFormatting).ReplaceLineEndings("\n");
     Check(listXml == "<EnemyGangs>\n      <string>B</string>\n    </EnemyGangs>", "creator: list entries keep the indentation");
+
+    var owned = new EntryDraft(CreatorCatalog.Location("GamblingDen", "casino"), XElement.Parse("<GamblingDen><Name>C</Name><AssignedAssociationID>OLD</AssignedAssociationID><S><AssociationID>OLD</AssociationID></S><S><AssociationID>COPS</AssociationID></S></GamblingDen>"));
+    owned.Owner = "MID";
+    owned.Apply();
+    owned.Owner = "NEW";
+    owned.Apply();
+    var spawnOwners = owned.Entry.Elements("S").Select(s => s.Element("AssociationID")!.Value).ToList();
+    Check(owned.Entry.Element("AssignedAssociationID")!.Value == "NEW" && spawnOwners.SequenceEqual(["NEW", "COPS"]), "creator: spawns inside follow the new owner");
+
+    var menu = XElement.Parse("<ShopMenu><ID>M</ID><Items><MenuItem><NumberOfItemsSoldToPlayer>4</NumberOfItemsSoldToPlayer><ModItemName>A</ModItemName><PurchasePrice>5</PurchasePrice></MenuItem></Items></ShopMenu>");
+    var added = MenuEditing.Add(menu, "B", menu.Element("Items")!.Element("MenuItem"));
+    MenuEditing.SetNumber(added, MenuEditing.BuyField, 12);
+    Check(MenuEditing.ItemNames(menu).SequenceEqual(["A", "B"]) && MenuEditing.Number(added, MenuEditing.BuyField) == 12 && added.Element("NumberOfItemsSoldToPlayer")!.Value == "0", "creator: menu item added from a pattern");
+    var blank = MenuEditing.Add(XElement.Parse("<ShopMenu><Items /></ShopMenu>"), "C", null);
+    Check(MenuEditing.Text(blank, MenuEditing.ItemField) == "C" && MenuEditing.Number(blank, MenuEditing.StockField) == -1, "creator: blank menu item");
+
+    var menus = XDocument.Parse("<ShopMenus><ShopMenuList><ShopMenu><ID>M</ID><Items /></ShopMenu></ShopMenuList></ShopMenus>");
+    var engine = new CreatorEngine(f => f == "ShopMenus" ? [menus] : [], _ => "ShopMenus.xml");
+    var edited = new XElement(engine.FindGroup(CreatorCatalog.ShopMenu, "M")!);
+    MenuEditing.Add(edited, "X", null);
+    engine.CopyGroup(CreatorCatalog.ShopMenu, "M", "M2", edited);
+    Check(MenuEditing.ItemCount(engine.FindGroup(CreatorCatalog.ShopMenu, "M")!) == 0 && MenuEditing.ItemNames(engine.FindGroup(CreatorCatalog.ShopMenu, "M2")!).Single() == "X", "creator: edited menu copy leaves the original alone");
 }
 finally
 {

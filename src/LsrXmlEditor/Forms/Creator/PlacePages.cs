@@ -20,7 +20,7 @@ internal sealed class LocationPage(IReadOnlyList<SavedPosition> saves)
 }
 
 internal sealed class DenPage(CreatorEngine engine, IReadOnlyList<SavedPosition> saves, Func<GroupKind, IReadOnlyList<Choice<string>>> groups)
-    : CreatorPage(CreatorStep.Den, "Den", "The gang's hangout with its own blip, spawns and dealer menu.")
+    : CreatorPage(CreatorStep.Den, "Den", "The gang's hangout with its own blip, spawns, staff and menu.")
 {
     private readonly List<Control> _parts = [];
 
@@ -65,12 +65,14 @@ internal sealed class DenPage(CreatorEngine engine, IReadOnlyList<SavedPosition>
         placement.Changed += (_, _) => OnChanged();
         _parts.Add(AddRow("Entrance:", placement));
 
+        if (den.Links.Count > 0)
+        {
+            AddSection("Menu & staff", "Which menu the den uses and who stands behind the counter. Take an own copy of the menu to change what it sells and buys in the next step without touching the template gang.");
+        }
+
         foreach (var link in den.Links)
         {
-            AddSection("Den menu", "What the den sells and buys. An own copy lets you change prices without touching the template gang.");
-            var editor = new LinkEditor(link, groups(link.Link.Kind), id => draft.SetLinkId(link, id));
-            editor.Changed += (_, _) => OnChanged();
-            _parts.Add(AddRow(link.Link.Label + ":", editor));
+            _parts.Add(AddRow(link.Link.Label + ":", LinksPage.Editor(this, draft, link, engine, groups)));
         }
 
         Enable(draft.DenEnabled);

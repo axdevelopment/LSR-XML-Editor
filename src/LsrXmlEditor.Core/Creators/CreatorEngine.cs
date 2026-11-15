@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using LsrXmlEditor.Core.Text;
 using LsrXmlEditor.Core.Xml;
 
 namespace LsrXmlEditor.Core.Creators;
@@ -9,6 +10,11 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
 {
     private const string ListItem = "string";
     private const string PriorityField = "Priority";
+    private const string MenuItemElement = "MenuItem";
+    private const string ItemsSuffix = "Items";
+
+    private IReadOnlyList<ModItemInfo>? _items;
+    private HashSet<string>? _itemNames;
 
     public static readonly AreaRows Territories = new(CreatorCatalog.GangTerritoriesFile, "GangTerritory", "ZoneInternalGameName", "GangID", new Dictionary<string, string>());
     public static readonly AreaRows ZoneJurisdictions = new(CreatorCatalog.ZoneJurisdictionsFile, "ZoneJurisdiction", "ZoneInternalGameName", "AgencyID", new Dictionary<string, string> { [PriorityField] = "0" });
@@ -55,13 +61,64 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
     public IReadOnlyList<string> Owned(AreaRows rows, string owner) =>
         [.. Rows(rows).Where(r => Same(r.Element(rows.OwnerField)?.Value, owner)).Select(r => r.Element(rows.KeyField)?.Value.Trim() ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase)];
 
-    public XElement CopyGroup(GroupKind kind, string sourceId, string newId)
+    public XElement CopyGroup(GroupKind kind, string sourceId, string newId, XElement? content = null)
     {
         var source = FindGroup(kind, sourceId) ?? throw new InvalidOperationException($"{sourceId} not found");
-        var copy = XmlEditing.CloneAfter(source);
+        var copy = new XElement(content ?? source);
+        XmlEditing.InsertAfter(source, copy);
         SetChild(copy, kind.IdElement, newId);
         return copy;
     }
+
+    public IReadOnlyList<string> Users(GroupKind kind, string id)
+    {
+        if (id.Length == 0)
+        {
+            return [];
+        }
+
+        var fields = CreatorCatalog.FieldsFor(kind);
+        var organizations = Entries(CreatorCatalog.Gang).Concat(Entries(CreatorCatalog.Agency))
+            .Where(e => Uses(e, fields, id))
+            .Select(e => e.Element(CreatorCatalog.IdField)?.Value.Trim() ?? string.Empty);
+        var places = Locations()
+            .Where(e => Uses(e, fields, id))
+            .Select(e => e.Element(CreatorCatalog.NameField)?.Value.Trim() ?? string.Empty);
+        return [.. organizations.Concat(places).Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    public IReadOnlyList<(string Id, string Title)> OwnerChoices() =>
+        [.. CreatorCatalog.Owners.SelectMany(kind => Entries(kind).Select(e => (
+                Id: e.Element(CreatorCatalog.IdField)?.Value.Trim() ?? string.Empty,
+                Title: $"{e.Element(CreatorCatalog.IdField)?.Value.Trim()} – {e.Element(CreatorCatalog.FullNameField)?.Value.Trim()} ({kind.Title})")))
+            .Where(o => o.Id.Length > 0)
+            .DistinctBy(o => o.Id, StringComparer.OrdinalIgnoreCase)];
+
+    public IReadOnlyList<ModItemInfo> ModItems() =>
+        _items ??= [.. documents(CreatorCatalog.ModItemsFile)
+            .SelectMany(d => d.Root?.Elements() ?? [])
+            .SelectMany(c => c.Elements().Select(i => new ModItemInfo(i.Element(CreatorCatalog.NameField)?.Value.Trim() ?? string.Empty, Category(c.Name.LocalName))))
+            .Where(i => i.Name.Length > 0)
+            .DistinctBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase)];
+
+    public bool ItemExists(string name) =>
+        (_itemNames ??= new HashSet<string>(ModItems().Select(i => i.Name), StringComparer.OrdinalIgnoreCase)).Count == 0 || _itemNames.Contains(name);
+
+    public XElement? MenuItemPattern(string modItem) =>
+        documents(CreatorCatalog.ShopMenu.FileBase)
+            .SelectMany(d => d.Descendants(MenuItemElement))
+            .FirstOrDefault(i => Same(i.Element(MenuEditing.ItemField)?.Value, modItem));
+
+    public IReadOnlyList<string> InteriorAssociations(string interiorId) =>
+        [.. documents(CreatorCatalog.InteriorsFile)
+            .SelectMany(d => d.Root?.Elements() ?? [])
+            .SelectMany(c => c.Elements())
+            .Where(i => Same(i.Element(CreatorCatalog.InteriorIdField)?.Value, interiorId))
+            .SelectMany(i => i.Descendants(CreatorCatalog.SpawnAssociationField))
+            .Select(a => a.Value.Trim())
+            .Where(a => a.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 
     public static void Insert(XElement template, XElement entry) => XmlEditing.Append(template.Parent!, entry, template.Name);
 
@@ -142,6 +199,15 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
         documents(fileBase)
             .SelectMany(d => d.Root?.Elements() ?? [])
             .SelectMany(c => c.Name.LocalName == element ? Enumerable.Repeat(c, 1) : c.Elements(element));
+
+    private IEnumerable<XElement> Locations() =>
+        documents(CreatorCatalog.LocationsFile).Take(1).SelectMany(d => d.Root?.Elements() ?? []).SelectMany(c => c.Elements());
+
+    private static bool Uses(XElement entry, IReadOnlyList<string> fields, string id) =>
+        fields.Any(f => Same(entry.Element(f)?.Value, id));
+
+    private static string Category(string container) =>
+        DisplayNames.Humanize(container.EndsWith(ItemsSuffix, StringComparison.Ordinal) && container.Length > ItemsSuffix.Length ? container[..^ItemsSuffix.Length] : container);
 
     private IEnumerable<XElement> Rows(AreaRows rows) => documents(rows.FileBase).Take(1).SelectMany(d => d.Root?.Elements(rows.Element) ?? []);
 

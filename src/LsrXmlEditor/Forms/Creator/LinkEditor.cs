@@ -7,29 +7,34 @@ internal sealed class LinkEditor : FlowLayoutPanel
     private const string CopyText = "Own copy";
     private const string ShareText = "Share";
     private const string NoneText = "(none)";
+    private const int ListedUsers = 30;
 
     private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _group = new() { DropDownStyle = ComboBoxStyle.DropDownList, MaxDropDownItems = 20 };
     private readonly TextBox _newId = new() { PlaceholderText = "New ID" };
     private readonly Label _arrow = new() { Text = "→", AutoSize = true, Margin = new Padding(4, 6, 4, 0) };
+    private readonly Label _usage = new() { AutoSize = true, ForeColor = SystemColors.GrayText, Margin = new Padding(8, 6, 0, 0), UseMnemonic = false };
+    private readonly ToolTip _tip = new() { AutoPopDelay = 30000 };
     private readonly LinkChoice _link;
+    private readonly CreatorEngine _engine;
     private readonly Action<string> _idEdited;
     private bool _loading;
 
-    public LinkEditor(LinkChoice link, IReadOnlyList<Choice<string>> groups, Action<string> idEdited)
+    public LinkEditor(LinkChoice link, IReadOnlyList<Choice<string>> groups, CreatorEngine engine, Action<string> idEdited)
     {
         _link = link;
+        _engine = engine;
         _idEdited = idEdited;
         AutoSize = true;
         WrapContents = false;
         Margin = new Padding(0, 1, 0, 1);
         _mode.Width = LogicalToDeviceUnits(100);
-        _group.Width = LogicalToDeviceUnits(250);
-        _newId.Width = LogicalToDeviceUnits(200);
+        _group.Width = LogicalToDeviceUnits(240);
+        _newId.Width = LogicalToDeviceUnits(180);
         _mode.Items.AddRange([CopyText, ShareText]);
         _group.Items.Add(new Choice<string>(string.Empty, NoneText));
         _group.Items.AddRange([.. groups]);
-        Controls.AddRange([_mode, _group, _arrow, _newId]);
+        Controls.AddRange([_mode, _group, _arrow, _newId, _usage]);
 
         _mode.SelectedIndexChanged += (_, _) =>
         {
@@ -45,6 +50,7 @@ internal sealed class LinkEditor : FlowLayoutPanel
             if (!_loading && _group.SelectedItem is Choice<string> choice)
             {
                 _link.SourceId = choice.Value;
+                UpdateState();
                 Changed?.Invoke(this, EventArgs.Empty);
             }
         };
@@ -60,6 +66,16 @@ internal sealed class LinkEditor : FlowLayoutPanel
     }
 
     public event EventHandler? Changed;
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _tip.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
 
     private void Sync()
     {
@@ -80,5 +96,10 @@ internal sealed class LinkEditor : FlowLayoutPanel
     {
         _arrow.Visible = _link.Copy;
         _newId.Visible = _link.Copy;
+        var users = _engine.Users(_link.Link.Kind, _link.SourceId);
+        _usage.Visible = users.Count > 0;
+        _usage.Text = $"used by {users.Count}";
+        var listed = string.Join(Environment.NewLine, users.Take(ListedUsers));
+        _tip.SetToolTip(_usage, users.Count > ListedUsers ? $"{listed}{Environment.NewLine}… and {users.Count - ListedUsers} more" : listed);
     }
 }

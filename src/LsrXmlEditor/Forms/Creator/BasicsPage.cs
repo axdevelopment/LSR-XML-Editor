@@ -88,6 +88,11 @@ internal sealed class BasicsPage : CreatorPage
         };
         AddRow("&Copy of:", template);
         AddHint($"Every setting you don't change here is taken over from this {kind.Title}.");
+        if (_mode == CreatorMode.Location && draft.Main.HasOwner)
+        {
+            AddRow("&Run by:", OwnerPicker(draft));
+            AddHint("Who the place belongs to. Spawns inside it that belonged to the old owner switch over too.");
+        }
 
         AddSection("Name", kind.IdField is not null ? "Type the name – the ID and the other names fill in by themselves. You can still overwrite each of them." : null);
         _name = AddRow("&Name:", Field(draft.Name, v => { draft.SetName(v); Sync(); }));
@@ -155,6 +160,31 @@ internal sealed class BasicsPage : CreatorPage
             OnChanged();
         };
         AddRow("&Gang:", owner);
+    }
+
+    private ComboBox OwnerPicker(CreatorDraft draft)
+    {
+        var picker = Combo();
+        var owner = draft.Main.Owner.Trim();
+        var choices = new List<Choice<string>> { new(string.Empty, "(nobody)") };
+        choices.AddRange(_engine.OwnerChoices().Select(o => new Choice<string>(o.Id, o.Title)));
+        if (owner.Length > 0 && !choices.Any(c => string.Equals(c.Value, owner, StringComparison.OrdinalIgnoreCase)))
+        {
+            choices.Add(new(owner, $"{owner} (not found)"));
+        }
+
+        picker.Items.AddRange([.. choices]);
+        picker.SelectedIndex = choices.FindIndex(c => string.Equals(c.Value, owner, StringComparison.OrdinalIgnoreCase));
+        picker.Width = LogicalToDeviceUnits(420);
+        picker.SelectedIndexChanged += (_, _) =>
+        {
+            if (!Loading && picker.SelectedItem is Choice<string> choice)
+            {
+                draft.Main.Owner = choice.Value;
+                OnChanged();
+            }
+        };
+        return picker;
     }
 
     private void AddText(CreatorDraft draft, string field, string caption)

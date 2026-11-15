@@ -39,12 +39,17 @@ public static class CreatorCatalog
     public const string LocationsFile = "Locations";
     public const string ZonesFile = "Zones";
     public const string SaveGamesFile = "SaveGames";
+    public const string ModItemsFile = "ModItems";
+    public const string InteriorsFile = "Interiors";
     public const string GangTerritoriesFile = "GangTerritories";
     public const string ZoneJurisdictionsFile = "ZoneJurisdictions";
     public const string CountyJurisdictionsFile = "CountyJurisdictions";
     public const string GangDensContainer = "GangDens";
     public const string GangDenElement = "GangDen";
     public const string AssociationField = "AssignedAssociationID";
+    public const string SpawnAssociationField = "AssociationID";
+    public const string InteriorField = "InteriorID";
+    public const string InteriorIdField = "LocalID";
     public const string PrimaryDenField = "IsPrimaryGangDen";
     public const string MenuField = "MenuID";
     public const string IdField = "ID";
@@ -105,10 +110,30 @@ public static class CreatorCatalog
             new("OffDutyVehiclesID", "Off duty vehicles", Vehicles, "OffDutyVehicles", false)
         ]);
 
+    public static readonly EntityKind Organization = new("organization", "Organizations", "Organization", IdField, FullNameField, null, [], []);
+
+    public static readonly EntityKind TaxiFirm = new("taxi firm", "Organizations", "TaxiFirm", IdField, FullNameField, null, [], []);
+
     public static readonly LinkField MenuLink = new(MenuField, "Shop menu", ShopMenu, "Menu", true);
 
+    public static readonly IReadOnlyList<LinkField> LocationLinks =
+    [
+        MenuLink,
+        new("VendorPersonnelID", "Staff", Peds, "StaffPeds", false),
+        new("VendorMeleeWeaponsID", "Staff melee weapons", Weapons, "StaffMelee", false),
+        new("VendorSidearmWeaponsID", "Staff sidearms", Weapons, "StaffSidearms", false),
+        new("VendorLongGunWeaponsID", "Staff long guns", Weapons, "StaffLongGuns", false)
+    ];
+
+    public static IReadOnlyList<EntityKind> Owners { get; } = [Gang, Agency, Organization, TaxiFirm];
+
     public static EntityKind Location(string element, string title) =>
-        new(title, LocationsFile, element, null, NameField, null, [NameField, FullNameField, "Description", PromptField], [MenuLink]);
+        new(title, LocationsFile, element, null, NameField, null, [NameField, FullNameField, "Description", PromptField], LocationLinks);
 
     public static EntityKind Den { get; } = Location(GangDenElement, "gang den");
+
+    public static bool IsMenu(GroupKind kind) => kind == ShopMenu || kind == ShopMenuGroup;
+
+    public static IReadOnlyList<string> FieldsFor(GroupKind kind) =>
+        [.. Gang.Links.Concat(Agency.Links).Concat(LocationLinks).Where(l => l.Kind == kind).Select(l => l.Field).Distinct()];
 }

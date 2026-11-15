@@ -9,6 +9,8 @@ Runs completely offline – no auto-updater, no downloads, no telemetry.
 
 > **Beta:** this is an early release. It has only been tested with the stock GTA V content and the default LSR configs, **not with custom content** such as add-on vehicles, weapons, peds or clothing. Please back up your configs before editing.
 >
+> **Tested with:** GTA V (Legacy, Steam) 1.0.3889.0 · Los Santos RED 1.0.0.562 · RAGE Plugin Hook 1.131.1424.17745
+>
 > Found a bug? Please report it as a [GitHub issue](../../issues) or on Discord to **onlyardo**.
 
 ![Editor](docs/editor.png)
@@ -19,6 +21,9 @@ Runs completely offline – no auto-updater, no downloads, no telemetry.
 
 - type a name, the ID and all other names fill in by themselves – the remaining steps are optional
 - per linked group (peds, vehicles, weapons, heads, menus) choose an own copy or share any existing group
+- every group shows who else uses it (hover "used by"), so you can see where a menu or ped group is in use
+- menus step: see and change what the player can buy and sell (prices, stock, illicit), add or remove items – on an own copy, the original stays untouched
+- shops and other places keep their owner (gang, agency, organization) or get a new one; spawns inside switch over too, and staff peds/weapons are linked like any other group
 - place dens and shops from a Los Santos RED save game or pasted coordinates; spawn, parking and camera points move and turn along
 - friends & enemies (optionally mutual), territory, jurisdiction and every other setting of the new entry
 - live checks and a summary of what lands in which file – one Ctrl+Z undoes the whole thing

@@ -30,7 +30,10 @@ public sealed class CreatorSession
         CreatorCatalog.GangTerritoriesFile,
         CreatorCatalog.ZoneJurisdictionsFile,
         CreatorCatalog.CountyJurisdictionsFile,
-        CreatorCatalog.SaveGamesFile
+        CreatorCatalog.SaveGamesFile,
+        CreatorCatalog.ModItemsFile,
+        CreatorCatalog.InteriorsFile,
+        CreatorCatalog.Organization.FileBase
     ];
 
     private readonly Dictionary<string, List<XmlConfigDocument>> _documents;

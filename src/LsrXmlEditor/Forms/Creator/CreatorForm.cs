@@ -39,6 +39,7 @@ public sealed class CreatorForm : Form
     private readonly LinksPage _links;
     private readonly LocationPage _location;
     private readonly DenPage _den;
+    private readonly MenusPage _menus;
     private readonly RelationsPage _relations;
     private readonly AreaPage _area;
     private readonly SettingsPage _settings;
@@ -72,15 +73,16 @@ public sealed class CreatorForm : Form
 
         _basics = new BasicsPage(mode, engine, data, Rebase);
         _links = mode is CreatorMode.Gang or CreatorMode.Agency
-            ? new LinksPage("Members, cars & weapons", "Where the peds, vehicles and weapons of the new " + (mode == CreatorMode.Gang ? "gang" : "agency") + " come from.", Groups)
-            : new LinksPage("Shop menu", "What the place sells and buys.", Groups);
+            ? new LinksPage("Members, cars & weapons", "Where the peds, vehicles, weapons and menus of the new " + (mode == CreatorMode.Gang ? "gang" : "agency") + " come from.", engine, Groups)
+            : new LinksPage("Menu & staff", "Which menu the place uses and who works there.", engine, Groups);
         _location = new LocationPage(data.SavedPositions);
         _den = new DenPage(engine, data.SavedPositions, Groups);
+        _menus = new MenusPage(engine);
         _relations = new RelationsPage(engine);
         _area = new AreaPage(mode, engine, data);
         _settings = new SettingsPage(engine);
         _summary = new SummaryPage(data, ShowStep);
-        foreach (var page in new CreatorPage[] { _basics, _links, _location, _den, _relations, _area, _settings, _summary })
+        foreach (var page in new CreatorPage[] { _basics, _links, _location, _den, _menus, _relations, _area, _settings, _summary })
         {
             page.Changed += (_, _) => UpdateState();
         }
@@ -151,7 +153,7 @@ public sealed class CreatorForm : Form
     {
         if (disposing)
         {
-            foreach (var page in new CreatorPage[] { _basics, _links, _location, _den, _relations, _area, _settings, _summary }.Where(p => p.Parent is null))
+            foreach (var page in new CreatorPage[] { _basics, _links, _location, _den, _menus, _relations, _area, _settings, _summary }.Where(p => p.Parent is null))
             {
                 page.Dispose();
             }
@@ -253,7 +255,9 @@ public sealed class CreatorForm : Form
         {
             case CreatorMode.Gang:
                 AddIf(_links, draft.Main.Links.Count > 0);
-                _visible.AddRange([_den, _relations, _area]);
+                _visible.Add(_den);
+                AddIf(_menus, draft.HasMenus);
+                _visible.AddRange([_relations, _area]);
                 break;
             case CreatorMode.Agency:
                 AddIf(_links, draft.Main.Links.Count > 0);
@@ -262,6 +266,7 @@ public sealed class CreatorForm : Form
             default:
                 AddIf(_location, draft.Main.Placement is not null);
                 AddIf(_links, draft.Main.Links.Count > 0);
+                AddIf(_menus, draft.HasMenus);
                 break;
         }
 

@@ -4,7 +4,7 @@ using System.Xml.Linq;
 
 namespace LsrXmlEditor.Core.Xml;
 
-public sealed record XmlFileFormat(Encoding Encoding, bool HasDeclaration, string NewLine, string Trailing)
+public sealed record XmlFileFormat(Encoding Encoding, string? Declaration, string NewLine, string Trailing)
 {
     private const int ProbeSize = 4096;
     private const int WriteBufferSize = 1 << 16;
@@ -18,13 +18,13 @@ public sealed record XmlFileFormat(Encoding Encoding, bool HasDeclaration, strin
 
         var (encoding, bomLength) = DetectEncoding(head);
         var text = encoding.GetString(head[bomLength..]);
-        var hasDeclaration = text.TrimStart().StartsWith("<?xml", StringComparison.Ordinal);
+        var declaration = ReadDeclaration(text.TrimStart());
         var lf = text.IndexOf('\n');
         var newLine = lf > 0 && text[lf - 1] == '\r' ? "\r\n" : lf >= 0 ? "\n" : "\r\n";
 
         var trailing = ReadTrailing(stream, encoding);
         stream.Position = start;
-        return new XmlFileFormat(encoding, hasDeclaration, newLine, trailing);
+        return new XmlFileFormat(encoding, declaration, newLine, trailing);
     }
 
     public void Write(XDocument document, string path)
@@ -32,7 +32,7 @@ public sealed record XmlFileFormat(Encoding Encoding, bool HasDeclaration, strin
         var settings = new XmlWriterSettings
         {
             Encoding = Encoding,
-            OmitXmlDeclaration = !HasDeclaration,
+            OmitXmlDeclaration = true,
             Indent = false,
             NewLineHandling = NewLineHandling.Replace,
             NewLineChars = NewLine,
@@ -42,13 +42,32 @@ public sealed record XmlFileFormat(Encoding Encoding, bool HasDeclaration, strin
         using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, WriteBufferSize);
         using (var writer = XmlWriter.Create(stream, settings))
         {
-            document.Save(writer);
+            if (Declaration is not null)
+            {
+                writer.WriteRaw(Declaration);
+            }
+
+            foreach (var node in document.Nodes())
+            {
+                node.WriteTo(writer);
+            }
         }
 
         if (Trailing.Length > 0 && document.LastNode is not XText)
         {
             stream.Write(Encoding.GetBytes(Trailing));
         }
+    }
+
+    private static string? ReadDeclaration(string text)
+    {
+        if (!text.StartsWith("<?xml", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var end = text.IndexOf("?>", StringComparison.Ordinal);
+        return end < 0 ? null : text[..(end + 2)];
     }
 
     private static (Encoding Encoding, int BomLength) DetectEncoding(ReadOnlySpan<byte> head)

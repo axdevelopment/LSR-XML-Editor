@@ -63,7 +63,7 @@ internal abstract class CreatorPage : TableLayoutPanel
         }
     }
 
-    protected void OnChanged()
+    internal void OnChanged()
     {
         if (!Loading)
         {
