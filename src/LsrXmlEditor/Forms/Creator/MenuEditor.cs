@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Xml.Linq;
 using LsrXmlEditor.Core.Creators;
+using LsrXmlEditor.Infrastructure;
 
 namespace LsrXmlEditor.Forms.Creator;
 
@@ -52,7 +53,7 @@ internal sealed class MenuEditor : TableLayoutPanel
         ComboBox? variants = null;
         if (menus.Count > 1)
         {
-            variants = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = LogicalToDeviceUnits(420), MaxDropDownItems = 20 };
+            variants = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = LogicalToDeviceUnits(UiTheme.Grow(420)), MaxDropDownItems = 20 };
             variants.Items.AddRange([.. menus.Select(m => new Choice<XElement>(m.Menu, m.Title))]);
             variants.SelectedIndexChanged += (_, _) =>
             {
@@ -86,22 +87,22 @@ internal sealed class MenuEditor : TableLayoutPanel
 
     private void BuildGrid()
     {
-        _grid.Size = new Size(LogicalToDeviceUnits(640), LogicalToDeviceUnits(260));
+        _grid.Size = new Size(LogicalToDeviceUnits(UiTheme.Grow(640)), LogicalToDeviceUnits(UiTheme.Grow(260)));
         _grid.ReadOnly = !_editable;
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Item", Width = LogicalToDeviceUnits(220), ReadOnly = true, ValueType = typeof(string) });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Type", Width = LogicalToDeviceUnits(80), ReadOnly = true, ValueType = typeof(string) });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Item", Width = LogicalToDeviceUnits(UiTheme.Grow(220)), ReadOnly = true, ValueType = typeof(string) });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Type", Width = LogicalToDeviceUnits(UiTheme.Grow(80)), ReadOnly = true, ValueType = typeof(string) });
         foreach (var (_, header, width) in NumberColumns)
         {
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 HeaderText = header,
-                Width = LogicalToDeviceUnits(width),
+                Width = LogicalToDeviceUnits(UiTheme.Grow(width)),
                 ValueType = typeof(int),
                 DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight }
             });
         }
 
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "Illicit", Width = LogicalToDeviceUnits(50), ValueType = typeof(bool) });
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "Illicit", Width = LogicalToDeviceUnits(UiTheme.Grow(50)), ValueType = typeof(bool) });
         _grid.CellValidating += (_, e) =>
         {
             if (!_loading && IsNumberColumn(e.ColumnIndex) && !int.TryParse(Convert.ToString(e.FormattedValue, CultureInfo.CurrentCulture), NumberStyles.Integer, CultureInfo.CurrentCulture, out int _))
@@ -131,7 +132,7 @@ internal sealed class MenuEditor : TableLayoutPanel
 
     private FlowLayoutPanel BuildToolbar()
     {
-        _item.Width = LogicalToDeviceUnits(300);
+        _item.Width = LogicalToDeviceUnits(UiTheme.Grow(300));
         _item.Items.AddRange([.. _engine.ModItems().Select(i => i.Name)]);
         var add = new Button { Text = "&Add", AutoSize = true };
         var remove = new Button { Text = "Re&move selected", AutoSize = true };

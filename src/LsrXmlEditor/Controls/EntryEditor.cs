@@ -1,6 +1,7 @@
 using System.Xml;
 using System.Xml.Linq;
 using LsrXmlEditor.Core.Xml;
+using LsrXmlEditor.Infrastructure;
 using LsrXmlEditor.PropertyModel;
 
 namespace LsrXmlEditor.Controls;
@@ -12,7 +13,7 @@ public sealed class EntryEditor : UserControl
     private const string XmlFontName = "Consolas";
 
     private readonly Font _titleFont;
-    private readonly Font _xmlFont = new(XmlFontName, XmlFontSize);
+    private readonly Font _xmlFont = new(XmlFontName, XmlFontSize * UiTheme.Scale);
     private readonly Label _title = new() { AutoSize = true, UseMnemonic = false, Margin = new Padding(0) };
     private readonly Label _subtitle = new() { AutoSize = true, UseMnemonic = false, ForeColor = SystemColors.GrayText, Margin = new Padding(0, 2, 0, 0) };
     private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
@@ -58,7 +59,7 @@ public sealed class EntryEditor : UserControl
     public EntryEditor()
     {
         SuspendLayout();
-        _titleFont = new Font(Font.FontFamily, Font.SizeInPoints * TitleScale, FontStyle.Bold);
+        _titleFont = new Font(UiTheme.Font.FontFamily, UiTheme.Font.SizeInPoints * TitleScale, FontStyle.Bold);
         _title.Font = _titleFont;
         _xml.Font = _xmlFont;
 
@@ -106,6 +107,7 @@ public sealed class EntryEditor : UserControl
 
         var menu = new ContextMenuStrip();
         menu.Items.AddRange([_cloneItem, _removeItem]);
+        UiTheme.Fit(menu);
         menu.Opening += (_, e) =>
         {
             var enabled = SelectedItemDescriptor is not null;
@@ -271,8 +273,6 @@ public sealed class EntryEditor : UserControl
     private static IEnumerable<GridItem> Flatten(GridItem item) =>
         item.GridItemType == GridItemType.Category ? item.GridItems.Cast<GridItem>() : [item];
 
-    private static Color ErrorColor => SystemInformation.HighContrast ? SystemColors.ControlText : Color.Firebrick;
-
     private XmlFieldDescriptor? SelectedItemDescriptor =>
         Grid.SelectedGridItem?.PropertyDescriptor is XmlFieldDescriptor { IsCollectionItem: true } descriptor ? descriptor : null;
 
@@ -283,7 +283,7 @@ public sealed class EntryEditor : UserControl
 
     private void ShowXmlStatus(string text, bool isError)
     {
-        _xmlStatus.ForeColor = isError ? ErrorColor : SystemColors.ControlText;
+        _xmlStatus.ForeColor = isError ? UiTheme.Error : UiTheme.Text;
         _xmlStatus.Text = text;
     }
 

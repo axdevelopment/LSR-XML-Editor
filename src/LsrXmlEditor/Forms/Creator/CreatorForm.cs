@@ -68,8 +68,10 @@ public sealed class CreatorForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         KeyPreview = true;
-        Size = new Size(LogicalToDeviceUnits(1000), LogicalToDeviceUnits(720));
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        Size = new Size(Math.Min(LogicalToDeviceUnits(UiTheme.Grow(1000)), area.Width), Math.Min(LogicalToDeviceUnits(UiTheme.Grow(720)), area.Height));
         MinimumSize = new Size(LogicalToDeviceUnits(820), LogicalToDeviceUnits(540));
+        Font = UiTheme.Font;
         _titleFont = new Font(Font.FontFamily, Font.SizeInPoints * 4f / 3f, FontStyle.Bold);
         _title.Font = _titleFont;
 
@@ -94,6 +96,7 @@ public sealed class CreatorForm : Form
         }
 
         BuildLayout();
+        UiTheme.Attach(this);
         _steps.DrawItem += DrawStep;
         _steps.SelectedIndexChanged += (_, _) =>
         {
@@ -198,9 +201,10 @@ public sealed class CreatorForm : Form
         main.Controls.Add(_content);
         main.Controls.Add(header);
 
-        var stepsPanel = new Panel { Dock = DockStyle.Left, Width = LogicalToDeviceUnits(StepWidth), BackColor = SystemColors.Window, Padding = new Padding(0, 10, 0, 0) };
-        _steps.BackColor = SystemColors.Window;
-        _steps.ItemHeight = LogicalToDeviceUnits(StepHeight);
+        var stepsPanel = new Panel { Dock = DockStyle.Left, Width = LogicalToDeviceUnits(UiTheme.Grow(StepWidth)), BackColor = UiTheme.Window, Padding = new Padding(0, 10, 0, 0) };
+        _steps.BackColor = UiTheme.Window;
+        _steps.ForeColor = UiTheme.Text;
+        _steps.ItemHeight = Math.Max(LogicalToDeviceUnits(StepHeight), Font.Height + LogicalToDeviceUnits(14));
         stepsPanel.Controls.Add(_steps);
         var divider = new Label { Dock = DockStyle.Left, Width = 1, BackColor = SystemColors.ControlDark };
 
@@ -422,13 +426,13 @@ public sealed class CreatorForm : Form
         }
 
         var selected = (e.State & DrawItemState.Selected) != 0;
-        using (var background = new SolidBrush(selected ? SystemColors.Highlight : SystemColors.Window))
+        using (var background = new SolidBrush(selected ? UiTheme.Selection : UiTheme.Window))
         {
             e.Graphics.FillRectangle(background, e.Bounds);
         }
 
         var page = _visible[e.Index];
-        var color = selected ? SystemColors.HighlightText : SystemColors.WindowText;
+        var color = selected ? UiTheme.SelectionText : UiTheme.Text;
         var padding = LogicalToDeviceUnits(14);
         var text = $"{e.Index + 1}.  {page.Title}";
         TextRenderer.DrawText(e.Graphics, text, e.Font, new Rectangle(e.Bounds.X + padding, e.Bounds.Y, e.Bounds.Width - padding * 3, e.Bounds.Height), color, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);

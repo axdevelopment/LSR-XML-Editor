@@ -19,6 +19,7 @@ public sealed class BackupsForm : Form
     public BackupsForm(Workspace workspace)
     {
         _workspace = workspace;
+        Font = UiTheme.Font;
         SuspendLayout();
         Text = "Backups";
         Icon = StockImages.AppIcon;
@@ -58,6 +59,7 @@ public sealed class BackupsForm : Form
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         ResumeLayout();
+        UiTheme.Attach(this);
 
         restore.Click += (_, _) => Restore();
         reveal.Click += (_, _) => Dialogs.Reveal((_list.SelectedRow?.Tag as BackupInfo)?.BackupPath ?? _workspace.Backups!.BackupRoot);

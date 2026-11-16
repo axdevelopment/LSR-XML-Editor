@@ -1,11 +1,15 @@
 using System.Text.Json;
 using LsrXmlEditor.Core.Backups;
+using LsrXmlEditor.Core.Themes;
 
 namespace LsrXmlEditor.Core.Storage;
 
 public sealed class AppSettings
 {
     public const string DefaultFolder = @"C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto V\Plugins\LosSantosRED";
+    public const int DefaultTextSize = 100;
+    public const int MinTextSize = 100;
+    public const int MaxTextSize = 200;
 
     private const int MaxRecentFolders = 8;
 
@@ -24,6 +28,10 @@ public sealed class AppSettings
     public string? CodeWalkerFolder { get; set; }
 
     public List<string> RecentFolders { get; set; } = [];
+
+    public string Theme { get; set; } = ThemeCatalog.LightId;
+
+    public int TextSize { get; set; } = DefaultTextSize;
 
     public static AppSettings Load(string path)
     {

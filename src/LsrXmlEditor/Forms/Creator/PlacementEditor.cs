@@ -30,7 +30,7 @@ internal sealed class PlacementEditor : FlowLayoutPanel
                 Minimum = i == 3 ? 0 : -Range,
                 Maximum = i == 3 ? 360 : Range,
                 DecimalPlaces = i == 3 ? 2 : 4,
-                Width = LogicalToDeviceUnits(i == 3 ? 80 : 100),
+                Width = LogicalToDeviceUnits(UiTheme.Grow(i == 3 ? 80 : 100)),
                 TextAlign = HorizontalAlignment.Right
             };
             box.ValueChanged += (_, _) => Store();
@@ -53,6 +53,7 @@ internal sealed class PlacementEditor : FlowLayoutPanel
             _saves.Items.Add(save.Title, null, (_, _) => Put(save.Placement));
         }
 
+        UiTheme.Fit(_saves);
         _fromSave.Enabled = saves.Count > 0;
         _fromSave.Click += (_, _) => _saves.Show(_fromSave, new Point(0, _fromSave.Height));
 

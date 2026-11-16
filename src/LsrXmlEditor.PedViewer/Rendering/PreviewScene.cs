@@ -49,7 +49,9 @@ public sealed class PreviewScene : Border
     {
         Background = SystemParameters.HighContrast
             ? System.Windows.SystemColors.WindowBrush
-            : new LinearGradientBrush(WpfColor.FromRgb(236, 238, 242), WpfColor.FromRgb(196, 200, 208), 90);
+            : System.Windows.Forms.Application.IsDarkModeEnabled
+                ? new LinearGradientBrush(WpfColor.FromRgb(58, 60, 66), WpfColor.FromRgb(30, 31, 35), 90)
+                : new LinearGradientBrush(WpfColor.FromRgb(236, 238, 242), WpfColor.FromRgb(196, 200, 208), 90);
         _viewport.Camera = _camera;
 
         _lights.Children.Add(new AmbientLight(WpfColor.FromRgb(110, 110, 110)));

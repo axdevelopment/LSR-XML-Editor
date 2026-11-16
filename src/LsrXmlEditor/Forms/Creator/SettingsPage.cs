@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using LsrXmlEditor.Core.Creators;
 using LsrXmlEditor.Core.Xml;
+using LsrXmlEditor.Infrastructure;
 using LsrXmlEditor.PropertyModel;
 
 namespace LsrXmlEditor.Forms.Creator;
@@ -42,7 +43,7 @@ internal sealed class SettingsPage : CreatorPage
         Controls.Add(hint, 0, 0);
         SetColumnSpan(hint, 2);
         Controls.Add(new Label { Text = "&Edit:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 12, 6) }, 0, 1);
-        _target.Width = LogicalToDeviceUnits(FieldWidth);
+        _target.Width = LogicalToDeviceUnits(UiTheme.Grow(FieldWidth));
         Controls.Add(_target, 1, 1);
         Controls.Add(_grid, 0, 2);
         SetColumnSpan(_grid, 2);

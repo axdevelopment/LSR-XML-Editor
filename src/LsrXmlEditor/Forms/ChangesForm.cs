@@ -27,6 +27,7 @@ public sealed class ChangesForm : Form
     public ChangesForm(Workspace workspace)
     {
         _workspace = workspace;
+        Font = UiTheme.Font;
         SuspendLayout();
         Text = "Change log";
         Icon = StockImages.AppIcon;
@@ -61,6 +62,7 @@ public sealed class ChangesForm : Form
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         ResumeLayout();
+        UiTheme.Attach(this);
 
         Load += (_, _) => split.SetDistance(LogicalToDeviceUnits(SetListWidth));
         _sets.SelectedIndexChanged += (_, _) => ShowOperations((_sets.SelectedRow?.Tag as ChangeSet)?.Operations.Select(o => (o, (ReplayStatus?)null)));

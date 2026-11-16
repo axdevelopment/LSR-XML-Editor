@@ -35,6 +35,7 @@ public sealed class SearchForm : Form
     {
         _workspace = workspace;
         _open = open;
+        Font = UiTheme.Font;
         SuspendLayout();
         Text = "Search all files";
         Icon = StockImages.AppIcon;
@@ -58,6 +59,7 @@ public sealed class SearchForm : Form
 
         var statusStrip = new StatusStrip();
         statusStrip.Items.Add(_status);
+        UiTheme.Fit(statusStrip);
 
         Controls.Add(resultPanel);
         Controls.Add(optionRow);
@@ -69,6 +71,7 @@ public sealed class SearchForm : Form
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         ResumeLayout();
+        UiTheme.Attach(this);
 
         _results.SetContent(Columns, []);
         _search.Click += async (_, _) => await SearchAsync();

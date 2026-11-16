@@ -1,4 +1,5 @@
 using LsrXmlEditor.Core.Creators;
+using LsrXmlEditor.Infrastructure;
 
 namespace LsrXmlEditor.Forms.Creator;
 
@@ -28,9 +29,9 @@ internal sealed class LinkEditor : FlowLayoutPanel
         AutoSize = true;
         WrapContents = false;
         Margin = new Padding(0, 1, 0, 1);
-        _mode.Width = LogicalToDeviceUnits(100);
-        _group.Width = LogicalToDeviceUnits(210);
-        _newId.Width = LogicalToDeviceUnits(150);
+        _mode.Width = LogicalToDeviceUnits(UiTheme.Grow(100));
+        _group.Width = LogicalToDeviceUnits(UiTheme.Grow(210));
+        _newId.Width = LogicalToDeviceUnits(UiTheme.Grow(150));
         _mode.Items.AddRange([CopyText, ShareText]);
         _group.Items.Add(new Choice<string>(string.Empty, NoneText));
         _group.Items.AddRange([.. groups]);

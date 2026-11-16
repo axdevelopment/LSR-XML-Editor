@@ -1,4 +1,5 @@
 using LsrXmlEditor.Core.Creators;
+using LsrXmlEditor.Infrastructure;
 
 namespace LsrXmlEditor.Forms.Creator;
 
@@ -105,7 +106,7 @@ internal abstract class CreatorPage : TableLayoutPanel
             UseMnemonic = false,
             ForeColor = SystemColors.GrayText,
             Margin = new Padding(0, 0, 0, 6),
-            MaximumSize = new Size(LogicalToDeviceUnits(640), 0)
+            MaximumSize = new Size(LogicalToDeviceUnits(UiTheme.Grow(640)), 0)
         };
         AddSpanning(label);
         return label;
@@ -116,9 +117,9 @@ internal abstract class CreatorPage : TableLayoutPanel
         var row = RowCount++;
         RowStyles.Add(new RowStyle(SizeType.AutoSize));
         Controls.Add(new Label { Text = caption, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, Margin = new Padding(0, 7, 12, 0) }, 0, row);
-        if (control is ComboBox or TextBox && control.Width < LogicalToDeviceUnits(FieldWidth))
+        if (control is ComboBox or TextBox && control.Width < LogicalToDeviceUnits(UiTheme.Grow(FieldWidth)))
         {
-            control.Width = LogicalToDeviceUnits(FieldWidth);
+            control.Width = LogicalToDeviceUnits(UiTheme.Grow(FieldWidth));
         }
 
         control.Anchor = AnchorStyles.Left;

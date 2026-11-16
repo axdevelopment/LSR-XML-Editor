@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using LsrXmlEditor.Core.Creators;
 using LsrXmlEditor.Core.Text;
+using LsrXmlEditor.Infrastructure;
 
 namespace LsrXmlEditor.Forms.Creator;
 
@@ -209,7 +210,7 @@ internal sealed class BasicsPage : CreatorPage
 
         picker.Items.AddRange([.. choices]);
         picker.SelectedIndex = choices.FindIndex(c => string.Equals(c.Value, owner, StringComparison.OrdinalIgnoreCase));
-        picker.Width = LogicalToDeviceUnits(420);
+        picker.Width = LogicalToDeviceUnits(UiTheme.Grow(420));
         picker.SelectedIndexChanged += (_, _) =>
         {
             if (!Loading && picker.SelectedItem is Choice<string> choice)
@@ -258,12 +259,15 @@ internal sealed class BasicsPage : CreatorPage
             if (e.Index >= 0 && combo.Items[e.Index] is Choice<(string Prefix, string Color)> choice)
             {
                 var swatch = new Rectangle(e.Bounds.X + 3, e.Bounds.Y + 2, e.Bounds.Height - 4, e.Bounds.Height - 4);
-                using (var brush = new SolidBrush(Color.FromName(choice.Value.Color) is { IsKnownColor: true } known ? known : SystemColors.Control))
+                using (var brush = new SolidBrush(Color.FromName(choice.Value.Color) is { IsKnownColor: true } known ? known : UiTheme.Surface))
                 {
                     e.Graphics.FillRectangle(brush, swatch);
                 }
 
-                e.Graphics.DrawRectangle(SystemPens.GrayText, swatch);
+                using (var pen = new Pen(UiTheme.Muted))
+                {
+                    e.Graphics.DrawRectangle(pen, swatch);
+                }
                 TextRenderer.DrawText(e.Graphics, $"{choice.Text}  {choice.Value.Prefix}", e.Font, new Point(swatch.Right + 6, e.Bounds.Y + 1), e.ForeColor);
             }
 

@@ -1,5 +1,6 @@
 using LsrXmlEditor.Core.Files;
 using LsrXmlEditor.Core.Text;
+using LsrXmlEditor.Core.Themes;
 using LsrXmlEditor.Infrastructure;
 using LsrXmlEditor.Services;
 
@@ -21,6 +22,8 @@ public sealed class NavigatorTree : TreeView
 {
     private const int LogicalItemHeight = 20;
 
+    private TreeNode? _hot;
+
     public NavigatorTree()
     {
         HideSelection = false;
@@ -29,7 +32,63 @@ public sealed class NavigatorTree : TreeView
         FullRowSelect = false;
         ImageList = StockImages.CreateTreeImages(LogicalToDeviceUnits(StockImages.SmallSize));
         BorderStyle = BorderStyle.None;
-        ItemHeight = LogicalToDeviceUnits(LogicalItemHeight);
+        FitItemHeight();
+        if (UiTheme.Palette is { } palette)
+        {
+            DrawThemed(palette);
+        }
+    }
+
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        FitItemHeight();
+    }
+
+    private void FitItemHeight() => ItemHeight = Math.Max(LogicalToDeviceUnits(LogicalItemHeight), Font.Height + LogicalToDeviceUnits(4));
+
+    private void DrawThemed(ThemePalette palette)
+    {
+        DrawMode = TreeViewDrawMode.OwnerDrawText;
+        HotTracking = false;
+        DrawNode += (_, e) =>
+        {
+            if (e.Node is null || e.Bounds.IsEmpty)
+            {
+                return;
+            }
+
+            var selected = (e.State & TreeNodeStates.Selected) != 0;
+            var (back, fore) = selected
+                ? Focused ? (palette.Selection, palette.SelectionText) : (palette.InactiveSelection, palette.Text)
+                : e.Node == _hot ? (palette.Hover, palette.Text) : (palette.Window, palette.Text);
+            var bounds = new Rectangle(e.Bounds.X, e.Bounds.Y, TextRenderer.MeasureText(e.Graphics, e.Node.Text, Font, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine).Width + LogicalToDeviceUnits(4), e.Bounds.Height);
+            using (var brush = new SolidBrush(back))
+            {
+                e.Graphics.FillRectangle(brush, bounds);
+            }
+
+            TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, bounds, fore, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+        };
+        MouseMove += (_, e) => Hover(GetNodeAt(e.Location));
+        MouseLeave += (_, _) => Hover(null);
+        GotFocus += (_, _) => Invalidate();
+        LostFocus += (_, _) => Invalidate();
+    }
+
+    private void Hover(TreeNode? node)
+    {
+        if (node == _hot)
+        {
+            return;
+        }
+
+        var previous = _hot;
+        _hot = node;
+        foreach (var changed in new[] { previous, node }.OfType<TreeNode>())
+        {
+            Invalidate(new Rectangle(0, changed.Bounds.Y, ClientSize.Width, changed.Bounds.Height));
+        }
     }
 
     public NavTarget? SelectedTarget => SelectedNode?.Tag as NavTarget;

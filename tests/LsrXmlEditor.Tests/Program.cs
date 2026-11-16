@@ -5,6 +5,7 @@ using LsrXmlEditor.Core.Changes;
 using LsrXmlEditor.Core.Creators;
 using LsrXmlEditor.Core.Files;
 using LsrXmlEditor.Core.Search;
+using LsrXmlEditor.Core.Themes;
 using LsrXmlEditor.Core.Workspace;
 using LsrXmlEditor.Core.Xml;
 
@@ -316,6 +317,13 @@ try
     var dropReplay = ChangeReplayer.Apply(dropsDoc, dropOps);
     var dropValues = dropsDoc.Root.Element("Drops")!.Elements().Select(e => e.Element("X")!.Value).ToList();
     Check(dropReplay.All(r => r.Status == ReplayStatus.Applied) && dropValues.SequenceEqual(["9", "0", "2", "33", "4"]), $"replay: duplicates are found by content ({string.Join(",", dropValues)})");
+
+    foreach (var palette in ThemeCatalog.Custom)
+    {
+        var minimum = palette == ThemeCatalog.HighContrast ? 7 : 4.5;
+        var weak = palette.TextPairs.Where(p => Contrast.Ratio(p.Foreground, p.Background) < minimum).Select(p => p.Pair).ToList();
+        Check(weak.Count == 0, $"theme {palette.Name} has enough contrast{(weak.Count > 0 ? ": " + string.Join(", ", weak) : string.Empty)}");
+    }
 
     var latin = Path.Combine(work, "latin.xml");
     File.WriteAllBytes(latin, [.. "<?xml version=\"1.0\" encoding=\"iso-8859-1\"?>\r\n<Root><Value>"u8, 0xFC, .. "</Value></Root>"u8]);

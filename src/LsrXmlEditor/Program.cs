@@ -22,6 +22,24 @@ internal static class Program
         Application.ThreadException += (_, e) => Dialogs.Error(null, e.Exception.Message);
 
         var folder = args.FirstOrDefault(Directory.Exists);
-        Application.Run(new MainForm(new Workspace(AppPaths.Default), folder));
+        var workspace = new Workspace(AppPaths.Default);
+        UiTheme.Apply(workspace.Settings, startup: true);
+        var context = new ApplicationContext();
+
+        MainForm Create(MainFormState? state)
+        {
+            var form = new MainForm(workspace, folder, state);
+            form.AppearanceChanged += (_, _) =>
+            {
+                var next = Create(form.CaptureState());
+                context.MainForm = next;
+                next.Show();
+                form.CloseForRebuild();
+            };
+            return form;
+        }
+
+        context.MainForm = Create(null);
+        Application.Run(context);
     }
 }

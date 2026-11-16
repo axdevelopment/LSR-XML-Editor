@@ -1,4 +1,5 @@
 using System.Globalization;
+using LsrXmlEditor.Core.Themes;
 using LsrXmlEditor.Infrastructure;
 
 namespace LsrXmlEditor.Controls;
@@ -10,6 +11,7 @@ public sealed record ListRow(object Tag, string[] Cells);
 public sealed class ItemListView : ListView
 {
     private const NumberStyles NumberCellStyle = NumberStyles.AllowLeadingSign | NumberStyles.AllowThousands | NumberStyles.AllowDecimalPoint;
+    private const TextFormatFlags CellFlags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
 
     private List<ListRow> _allRows = [];
     private List<ListRow> _rows = [];
@@ -17,6 +19,7 @@ public sealed class ItemListView : ListView
     private int _sortColumn = -1;
     private bool _sortDescending;
     private bool _selectionQueued;
+    private int _hot = -1;
 
     public ItemListView()
     {
@@ -42,6 +45,11 @@ public sealed class ItemListView : ListView
                 e.SuppressKeyPress = true;
             }
         };
+
+        if (UiTheme.Palette is { } palette)
+        {
+            DrawThemed(palette);
+        }
     }
 
     public event EventHandler? RowsChanged;
@@ -126,7 +134,7 @@ public sealed class ItemListView : ListView
                 Columns.Clear();
                 foreach (var column in columns)
                 {
-                    Columns.Add(column.Header, LogicalToDeviceUnits(column.Width), column.Alignment);
+                    Columns.Add(column.Header, LogicalToDeviceUnits(UiTheme.Grow(column.Width)), column.Alignment);
                 }
             }
 
@@ -258,6 +266,69 @@ public sealed class ItemListView : ListView
         SelectedIndices.Add(index);
         EnsureVisible(index);
     }
+
+    private void DrawThemed(ThemePalette palette)
+    {
+        OwnerDraw = true;
+        DrawColumnHeader += (_, e) =>
+        {
+            using (var back = new SolidBrush(palette.Header))
+            {
+                e.Graphics.FillRectangle(back, e.Bounds);
+            }
+
+            using (var line = new Pen(palette.Border))
+            {
+                e.Graphics.DrawLine(line, e.Bounds.Right - 1, e.Bounds.Top + 4, e.Bounds.Right - 1, e.Bounds.Bottom - 5);
+                e.Graphics.DrawLine(line, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+            }
+
+            TextRenderer.DrawText(e.Graphics, e.Header?.Text, Font, Padded(e.Bounds), palette.Text, CellFlags | Align(e.Header?.TextAlign));
+        };
+        DrawItem += (_, _) => { };
+        DrawSubItem += (_, e) =>
+        {
+            var selected = SelectedIndices.Contains(e.ItemIndex);
+            var (back, fore) = selected
+                ? Focused ? (palette.Selection, palette.SelectionText) : (palette.InactiveSelection, palette.Text)
+                : e.ItemIndex == _hot ? (palette.Hover, palette.Text) : (palette.Window, palette.Text);
+            using (var brush = new SolidBrush(back))
+            {
+                e.Graphics.FillRectangle(brush, e.Bounds);
+            }
+
+            TextRenderer.DrawText(e.Graphics, e.SubItem?.Text, Font, Padded(e.Bounds), fore, CellFlags | Align(Columns[e.ColumnIndex].TextAlign));
+        };
+        MouseMove += (_, e) => Hover(HitTest(e.Location).Item?.Index ?? -1);
+        MouseLeave += (_, _) => Hover(-1);
+        GotFocus += (_, _) => Invalidate();
+        LostFocus += (_, _) => Invalidate();
+    }
+
+    private void Hover(int index)
+    {
+        if (index == _hot)
+        {
+            return;
+        }
+
+        var previous = _hot;
+        _hot = index;
+        foreach (var row in new[] { previous, index }.Where(r => r >= 0 && r < VirtualListSize))
+        {
+            RedrawItems(row, row, true);
+        }
+    }
+
+    private Rectangle Padded(Rectangle bounds) =>
+        new(bounds.X + LogicalToDeviceUnits(6), bounds.Y, Math.Max(0, bounds.Width - LogicalToDeviceUnits(10)), bounds.Height);
+
+    private static TextFormatFlags Align(HorizontalAlignment? alignment) => alignment switch
+    {
+        HorizontalAlignment.Right => TextFormatFlags.Right,
+        HorizontalAlignment.Center => TextFormatFlags.HorizontalCenter,
+        _ => TextFormatFlags.Left
+    };
 
     private void Rebuild()
     {

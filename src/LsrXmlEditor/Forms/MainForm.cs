@@ -16,6 +16,8 @@ namespace LsrXmlEditor.Forms;
 
 public sealed record EntryTag(XElement Element, int Index);
 
+public sealed record MainFormState(Rectangle Bounds, FormWindowState WindowState, string? FilePath, string? CategoryPath, int EntryIndex);
+
 public sealed class MainForm : Form
 {
     private const int FilterWidth = 200;
@@ -66,6 +68,7 @@ public sealed class MainForm : Form
     private Control? _viewerPanel;
     private XElement? _dockedEntry;
     private readonly string? _startFolder;
+    private readonly MainFormState? _restore;
     private readonly Font _headerFont;
     private readonly NavigatorTree _tree = new() { Dock = DockStyle.Fill };
     private readonly ItemListView _list = new() { Dock = DockStyle.Fill };
@@ -94,10 +97,12 @@ public sealed class MainForm : Form
     private bool _closeConfirmed;
     private bool _creatorOpen;
 
-    public MainForm(Workspace workspace, string? startFolder)
+    public MainForm(Workspace workspace, string? startFolder, MainFormState? restore = null)
     {
         _workspace = workspace;
         _startFolder = startFolder;
+        _restore = restore;
+        Font = UiTheme.Font;
         _headerFont = new Font(Font, FontStyle.Bold);
         SuspendLayout();
         Text = Dialogs.AppTitle;
@@ -111,8 +116,36 @@ public sealed class MainForm : Form
         BuildLayout();
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
+        if (restore is not null)
+        {
+            StartPosition = FormStartPosition.Manual;
+            Bounds = restore.Bounds;
+            WindowState = restore.WindowState == FormWindowState.Minimized ? FormWindowState.Normal : restore.WindowState;
+        }
+
         ResumeLayout();
         Wire();
+        UiTheme.Attach(this);
+    }
+
+    public event EventHandler? AppearanceChanged;
+
+    public MainFormState CaptureState()
+    {
+        var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+        var entry = SelectedEntryTags().FirstOrDefault()?.Index ?? -1;
+        return _tree.SelectedTarget switch
+        {
+            CategoryTarget category => new(bounds, WindowState, category.File.FullPath, category.CategoryPath, entry),
+            FileTarget file => new(bounds, WindowState, file.File.FullPath, null, entry),
+            _ => new(bounds, WindowState, null, null, -1)
+        };
+    }
+
+    public void CloseForRebuild()
+    {
+        _closeConfirmed = true;
+        Close();
     }
 
     public NavigatorTree Tree => _tree;
@@ -135,16 +168,21 @@ public sealed class MainForm : Form
             _document = null;
             _category = null;
             await _workspace.OpenAsync(folder);
-            _tree.Populate(_workspace);
-            UpdateRecentMenu();
-            UpdateSummary();
-            UpdateTitle();
-            SetStatus("Ready");
+            ShowWorkspace();
         }
         finally
         {
             UseWaitCursor = false;
         }
+    }
+
+    private void ShowWorkspace()
+    {
+        _tree.Populate(_workspace);
+        UpdateRecentMenu();
+        UpdateSummary();
+        UpdateTitle();
+        SetStatus("Ready");
     }
 
     public async Task NavigateAsync(string filePath, string? categoryPath, int entryIndex, string? fieldPath, string? entryTitle = null)
@@ -193,6 +231,17 @@ public sealed class MainForm : Form
     protected override async void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        if (_restore is { } restore && _workspace.IsOpen)
+        {
+            ShowWorkspace();
+            if (restore.FilePath is { } path)
+            {
+                await RunAsync(() => NavigateAsync(path, restore.CategoryPath, restore.EntryIndex, null));
+            }
+
+            return;
+        }
+
         var folder = new[] { _startFolder, _workspace.Settings.Folder, AppSettings.DefaultFolder }
                 .Select(ConfigFolder.Resolve)
                 .FirstOrDefault(f => f is not null)
@@ -268,6 +317,14 @@ public sealed class MainForm : Form
     {
         if (disposing)
         {
+            _workspace.History.Changed -= OnHistoryChanged;
+            _workspace.DirtyChanged -= OnDirtyChanged;
+            _workspace.DocumentReplaced -= OnDocumentReplaced;
+            if (_viewerPanel is not null)
+            {
+                _pedViewer.Release();
+            }
+
             _headerFont.Dispose();
         }
 
@@ -343,7 +400,9 @@ public sealed class MainForm : Form
             MenuItem(new Command("View in &3D", ViewIn3D, Keys.Control | Keys.D3)),
             new ToolStripSeparator(),
             MenuItem(new Command("Open config &folder in Explorer", () => RevealFolder(_workspace.Folder))),
-            MenuItem(new Command("Open &data folder (backups, change log)", () => RevealFolder(_workspace.DataRoot)))
+            MenuItem(new Command("Open &data folder (backups, change log)", () => RevealFolder(_workspace.DataRoot))),
+            new ToolStripSeparator(),
+            MenuItem(new Command("&Options...", ShowOptions))
         ]);
 
         var help = new ToolStripMenuItem("&Help");
@@ -410,6 +469,7 @@ public sealed class MainForm : Form
 
         var statusStrip = new StatusStrip();
         statusStrip.Items.AddRange([_status, _summary]);
+        UiTheme.Fit(menu, toolbar, listBar, listMenu, statusStrip);
 
         Controls.Add(_outerSplit);
         Controls.Add(toolbar);
@@ -419,8 +479,8 @@ public sealed class MainForm : Form
 
         Load += (_, _) =>
         {
-            _outerSplit.SetDistance(LogicalToDeviceUnits(TreeWidth));
-            _innerSplit.SetDistance(LogicalToDeviceUnits(ListWidth));
+            _outerSplit.SetDistance(LogicalToDeviceUnits(UiTheme.Grow(TreeWidth)));
+            _innerSplit.SetDistance(LogicalToDeviceUnits(UiTheme.Grow(ListWidth)));
         };
     }
 
@@ -428,11 +488,7 @@ public sealed class MainForm : Form
     {
         _includeSubfolders.Checked = _workspace.Settings.IncludeSubfolders;
         _viewerToggle.Image = GlyphImage(Glyph.View3D);
-        _workspace.History.Changed += (_, _) => BeginInvoke(() =>
-        {
-            _workspace.History.Close();
-            UpdateHistoryCommands();
-        });
+        _workspace.History.Changed += OnHistoryChanged;
         UpdateHistoryCommands();
         _pedViewer.CodeWalkerFolder = _workspace.Settings.CodeWalkerFolder;
         _viewerToggle.Checked = _workspace.Settings.ShowViewer && _pedViewer.IsAvailable && _pedViewer.HasCodeWalker;
@@ -460,19 +516,29 @@ public sealed class MainForm : Form
         _editor.FieldChanged += (_, element) => OnFieldChanged(element);
         _editor.StructureChanged += (_, _) => OnEntryStructureChanged();
         _editor.MultiFieldChanged += (_, elements) => OnMultiFieldChanged(elements);
-        _workspace.DirtyChanged += (_, _) => BeginInvoke(() =>
-        {
-            _tree.RefreshDirtyMarkers(_workspace);
-            UpdateTitle();
-        });
-        _workspace.DocumentReplaced += (_, path) => BeginInvoke(() =>
-        {
-            if (string.Equals(_document?.FilePath, path, StringComparison.OrdinalIgnoreCase))
-            {
-                _navigation = RunAsync(() => ShowTargetAsync(_tree.SelectedTarget));
-            }
-        });
+        _workspace.DirtyChanged += OnDirtyChanged;
+        _workspace.DocumentReplaced += OnDocumentReplaced;
     }
+
+    private void OnHistoryChanged(object? sender, EventArgs e) => BeginInvoke(() =>
+    {
+        _workspace.History.Close();
+        UpdateHistoryCommands();
+    });
+
+    private void OnDirtyChanged(object? sender, EventArgs e) => BeginInvoke(() =>
+    {
+        _tree.RefreshDirtyMarkers(_workspace);
+        UpdateTitle();
+    });
+
+    private void OnDocumentReplaced(object? sender, string path) => BeginInvoke(() =>
+    {
+        if (string.Equals(_document?.FilePath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            _navigation = RunAsync(() => ShowTargetAsync(_tree.SelectedTarget));
+        }
+    });
 
     private async Task ShowTargetAsync(NavTarget? target)
     {
@@ -1084,6 +1150,25 @@ public sealed class MainForm : Form
         }
     }
 
+    private void ShowOptions()
+    {
+        _editor.CommitEdit();
+        if (_editor.HasPendingXml && (!Dialogs.Confirm(this, "The XML tab has edits that were not applied yet. Apply them before changing the look?") || !_editor.ApplyPendingXml()))
+        {
+            return;
+        }
+
+        using var form = new OptionsForm(_workspace.Settings);
+        if (form.ShowDialog(this) != DialogResult.OK || !form.Changed)
+        {
+            return;
+        }
+
+        _workspace.SaveSettings();
+        UiTheme.Apply(_workspace.Settings, startup: false);
+        AppearanceChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private void RevealFolder(string folder)
     {
         if (Directory.Exists(folder))
@@ -1128,6 +1213,7 @@ public sealed class MainForm : Form
         var header = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
         var close = new ToolStripButton("✕") { Alignment = ToolStripItemAlignment.Right, ToolTipText = "Close 3D view" };
         close.Click += (_, _) => _viewerToggle.Checked = false;
+        UiTheme.Fit(header);
         header.Items.AddRange([new ToolStripLabel("3D view") { Font = _headerFont }, close]);
 
         var dock = new Panel { Dock = DockStyle.Fill };

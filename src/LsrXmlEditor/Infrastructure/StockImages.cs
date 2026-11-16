@@ -38,7 +38,7 @@ public static class StockImages
 
     private static readonly string[] GlyphFonts = ["Segoe Fluent Icons", "Segoe MDL2 Assets"];
     private static readonly Lazy<FontFamily?> GlyphFamily = new(FindGlyphFamily);
-    private static readonly Dictionary<(Glyph, int), Image> Glyphs = [];
+    private static readonly Dictionary<(Glyph, int, int), Image> Glyphs = [];
     private static readonly StringFormat Centered = new(StringFormat.GenericTypographic)
     {
         Alignment = StringAlignment.Center,
@@ -72,21 +72,22 @@ public static class StockImages
             return null;
         }
 
-        if (!Glyphs.TryGetValue((glyph, size), out var image))
+        var color = UiTheme.Palette?.Text ?? SystemColors.ControlText;
+        if (!Glyphs.TryGetValue((glyph, size, color.ToArgb()), out var image))
         {
-            image = Render(family, glyph, size);
-            Glyphs[(glyph, size)] = image;
+            image = Render(family, glyph, size, color);
+            Glyphs[(glyph, size, color.ToArgb())] = image;
         }
 
         return image;
     }
 
-    private static Bitmap Render(FontFamily family, Glyph glyph, int size)
+    private static Bitmap Render(FontFamily family, Glyph glyph, int size, Color color)
     {
         var bitmap = new Bitmap(size, size);
         using var graphics = Graphics.FromImage(bitmap);
         using var font = new Font(family, size, GraphicsUnit.Pixel);
-        using var brush = new SolidBrush(SystemColors.ControlText);
+        using var brush = new SolidBrush(color);
         graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         graphics.DrawString(((char)glyph).ToString(), font, brush, new RectangleF(0, 0, size, size), Centered);
         return bitmap;
