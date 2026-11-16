@@ -95,6 +95,7 @@ public sealed class MainForm : Form
     private Task _navigation = Task.CompletedTask;
     private SearchForm? _searchForm;
     private bool _closeConfirmed;
+    private bool _rebuilding;
     private bool _creatorOpen;
 
     public MainForm(Workspace workspace, string? startFolder, MainFormState? restore = null)
@@ -119,8 +120,7 @@ public sealed class MainForm : Form
         if (restore is not null)
         {
             StartPosition = FormStartPosition.Manual;
-            Bounds = restore.Bounds;
-            WindowState = restore.WindowState == FormWindowState.Minimized ? FormWindowState.Normal : restore.WindowState;
+            Location = restore.Bounds.Location;
         }
 
         ResumeLayout();
@@ -145,6 +145,7 @@ public sealed class MainForm : Form
     public void CloseForRebuild()
     {
         _closeConfirmed = true;
+        _rebuilding = true;
         Close();
     }
 
@@ -320,7 +321,7 @@ public sealed class MainForm : Form
             _workspace.History.Changed -= OnHistoryChanged;
             _workspace.DirtyChanged -= OnDirtyChanged;
             _workspace.DocumentReplaced -= OnDocumentReplaced;
-            if (_viewerPanel is not null)
+            if (_viewerPanel is not null && !_rebuilding)
             {
                 _pedViewer.Release();
             }
@@ -479,6 +480,12 @@ public sealed class MainForm : Form
 
         Load += (_, _) =>
         {
+            if (_restore is { } restore)
+            {
+                Bounds = restore.Bounds;
+                WindowState = restore.WindowState == FormWindowState.Minimized ? FormWindowState.Normal : restore.WindowState;
+            }
+
             _outerSplit.SetDistance(LogicalToDeviceUnits(UiTheme.Grow(TreeWidth)));
             _innerSplit.SetDistance(LogicalToDeviceUnits(UiTheme.Grow(ListWidth)));
         };
