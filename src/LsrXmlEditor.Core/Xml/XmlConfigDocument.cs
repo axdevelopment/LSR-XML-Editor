@@ -38,10 +38,11 @@ public sealed class XmlConfigDocument
 
     public static XmlConfigDocument Load(string path)
     {
+        var writeTime = File.GetLastWriteTimeUtc(path);
         using var stream = OpenRead(path);
         var format = XmlFileFormat.Detect(stream);
         var document = Parse(stream);
-        return new XmlConfigDocument(path, document, format, File.GetLastWriteTimeUtc(path));
+        return new XmlConfigDocument(path, document, format, writeTime);
     }
 
     public static XDocument Parse(Stream stream)

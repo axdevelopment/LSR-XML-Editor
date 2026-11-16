@@ -27,9 +27,10 @@ public sealed class CreatorForm : Form
     private readonly Panel _content = new() { Dock = DockStyle.Fill, AutoScroll = true };
     private readonly PictureBox _statusIcon = new() { SizeMode = PictureBoxSizeMode.CenterImage, Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, 6, 0) };
     private readonly Label _status = new() { AutoSize = true, Anchor = AnchorStyles.Left, UseMnemonic = false };
-    private readonly Button _back = new() { Text = "< &Back", AutoSize = true };
-    private readonly Button _next = new() { Text = "&Next >", AutoSize = true };
-    private readonly Button _create = new() { Text = "&Create", AutoSize = true };
+    private readonly Button _back = new() { Text = "< Back", AutoSize = true, UseMnemonic = false };
+    private readonly Button _next = new() { Text = "Next >", AutoSize = true, UseMnemonic = false };
+    private readonly Button _create = new() { Text = "Create", AutoSize = true, UseMnemonic = false };
+    private readonly ToolTip _tips = new();
     private readonly Button _cancel = new() { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
     private readonly Image _errorImage = StockImages.Small(StockIconId.Error);
     private readonly Image _warningImage = StockImages.Small(StockIconId.Warning);
@@ -48,6 +49,7 @@ public sealed class CreatorForm : Form
     private CreatorPage? _current;
     private CreatorDraft? _draft;
     private IReadOnlyList<CreatorProblem> _problems = [];
+    private bool _touched;
 
     public CreatorForm(CreatorMode mode, CreatorEngine engine, CreatorData data)
     {
@@ -84,7 +86,11 @@ public sealed class CreatorForm : Form
         _summary = new SummaryPage(data, ShowStep);
         foreach (var page in new CreatorPage[] { _basics, _links, _location, _den, _menus, _relations, _area, _settings, _summary })
         {
-            page.Changed += (_, _) => UpdateState();
+            page.Changed += (sender, _) =>
+            {
+                _touched |= sender != _basics;
+                UpdateState();
+            };
         }
 
         BuildLayout();
@@ -99,8 +105,10 @@ public sealed class CreatorForm : Form
         _back.Click += (_, _) => Go(-1);
         _next.Click += (_, _) => Go(1);
         _create.Click += (_, _) => CreateEntry();
-        AcceptButton = _create;
         CancelButton = _cancel;
+        _tips.SetToolTip(_back, "Previous step (Ctrl+Page Up)");
+        _tips.SetToolTip(_next, "Next step (Ctrl+Page Down)");
+        _tips.SetToolTip(_create, "Add the new entry (Ctrl+Enter)");
 
         var kind = _basics.InitialKind;
         if (engine.Entries(kind).FirstOrDefault() is { } template)
@@ -110,6 +118,8 @@ public sealed class CreatorForm : Form
     }
 
     public XElement? Result { get; private set; }
+
+    public Exception? Failure { get; private set; }
 
     protected override void OnLoad(EventArgs e)
     {
@@ -129,7 +139,7 @@ public sealed class CreatorForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        _basics.FocusName();
+        _basics.FocusInitial();
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -143,6 +153,9 @@ public sealed class CreatorForm : Form
             case Keys.Control | Keys.PageUp:
             case Keys.Control | Keys.Shift | Keys.Tab:
                 Go(-1);
+                return true;
+            case Keys.Control | Keys.Enter:
+                CreateEntry();
                 return true;
             default:
                 return base.ProcessCmdKey(ref msg, keyData);
@@ -159,6 +172,7 @@ public sealed class CreatorForm : Form
             }
 
             _titleFont.Dispose();
+            _tips.Dispose();
             _errorImage.Dispose();
             _warningImage.Dispose();
             _readyImage.Dispose();
@@ -213,15 +227,33 @@ public sealed class CreatorForm : Form
     private CreatorDraft Rebase(XElement template, EntityKind kind)
     {
         var old = _draft!;
+        if (_touched && !Dialogs.Confirm(this, "Starting from another entry resets what you set up in the other steps (links, menus, friends & enemies, settings). Continue?"))
+        {
+            BeginInvoke(() => ShowPage(_basics));
+            return old;
+        }
+
+        _touched = false;
         var draft = new CreatorDraft(_mode, _engine, kind, template);
         if (old.Name.Length > 0)
         {
             draft.SetName(old.Name);
         }
 
-        if (kind.IdField is { } idField && old.IsManual(idField))
+        foreach (var field in old.ManualFields.Where(draft.Main.Has))
         {
-            draft.SetField(idField, old.Id);
+            draft.SetField(field, old.Main.Get(field));
+        }
+
+        if (old.Main.Placement is { } placement && old.Main.Origin is { } origin && !placement.Equals(origin) && draft.Main.Placement is not null)
+        {
+            draft.Main.Placement = placement;
+            draft.Main.MoveAttached = old.Main.MoveAttached;
+        }
+
+        if (_mode == CreatorMode.Location && old.Main.OwnerChanged && draft.Main.HasOwner)
+        {
+            draft.Main.Owner = old.Main.Owner;
         }
 
         draft.Zones.UnionWith(old.Zones);
@@ -344,7 +376,7 @@ public sealed class CreatorForm : Form
         _next.Enabled = index < _visible.Count - 1;
         if (page == _basics)
         {
-            _basics.FocusName();
+            _basics.FocusInitial();
         }
         else
         {
@@ -424,8 +456,16 @@ public sealed class CreatorForm : Form
             return;
         }
 
-        Result = _draft.Commit();
-        DialogResult = DialogResult.OK;
+        try
+        {
+            Result = _draft.Commit();
+            DialogResult = DialogResult.OK;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NullReferenceException)
+        {
+            Failure = ex;
+            DialogResult = DialogResult.Abort;
+        }
     }
 
     private IReadOnlyList<Choice<string>> Groups(GroupKind kind)
@@ -433,6 +473,7 @@ public sealed class CreatorForm : Form
         if (!_groups.TryGetValue(kind, out var list))
         {
             list = [.. _engine.Groups(kind)
+                .Reverse()
                 .Select(g => (Id: g.Element(kind.IdElement)?.Value.Trim() ?? string.Empty, Size: CreatorEngine.GroupSize(g)))
                 .Where(g => g.Id.Length > 0)
                 .DistinctBy(g => g.Id, StringComparer.OrdinalIgnoreCase)

@@ -16,7 +16,8 @@ public sealed record ChangeOperation(
     string? OldValue = null,
     string? NewValue = null,
     string? EntryXml = null,
-    string? AfterKey = null)
+    string? AfterKey = null,
+    IReadOnlyList<string>? Match = null)
 {
     public string Describe() => Kind switch
     {

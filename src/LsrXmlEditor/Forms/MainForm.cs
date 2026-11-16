@@ -92,6 +92,7 @@ public sealed class MainForm : Form
     private Task _navigation = Task.CompletedTask;
     private SearchForm? _searchForm;
     private bool _closeConfirmed;
+    private bool _creatorOpen;
 
     public MainForm(Workspace workspace, string? startFolder)
     {
@@ -146,7 +147,7 @@ public sealed class MainForm : Form
         }
     }
 
-    public async Task NavigateAsync(string filePath, string? categoryPath, int entryIndex, string? fieldPath)
+    public async Task NavigateAsync(string filePath, string? categoryPath, int entryIndex, string? fieldPath, string? entryTitle = null)
     {
         var selected = categoryPath is not null && _tree.Select(t => t is CategoryTarget c
                 && string.Equals(c.File.FullPath, filePath, StringComparison.OrdinalIgnoreCase) && c.CategoryPath == categoryPath)
@@ -164,7 +165,15 @@ public sealed class MainForm : Form
         }
 
         _filter.Text = string.Empty;
-        _list.SelectWhere(t => t is EntryTag e && e.Index == entryIndex);
+        var found = entryTitle is null
+            ? _list.SelectWhere(t => t is EntryTag e && e.Index == entryIndex)
+            : _list.SelectWhere(t => t is EntryTag e && e.Index == entryIndex && EntryIdentity.TitleOf(e.Element) == entryTitle);
+        if (!found && entryTitle is not null)
+        {
+            _list.SelectClosest(t => t is EntryTag e && EntryIdentity.TitleOf(e.Element) == entryTitle ? e.Index : null, entryIndex);
+            _list.Focus();
+        }
+
         _list.FlushSelection();
         if (!string.IsNullOrEmpty(fieldPath))
         {
@@ -198,7 +207,8 @@ public sealed class MainForm : Form
 
     protected override async void OnFormClosing(FormClosingEventArgs e)
     {
-        if (_closeConfirmed || !_workspace.HasUnsavedChanges)
+        _editor.CommitEdit();
+        if (_closeConfirmed || !_workspace.HasUnsavedChanges && !_editor.HasPendingXml)
         {
             base.OnFormClosing(e);
             return;
@@ -213,6 +223,11 @@ public sealed class MainForm : Form
 
         if (answer == DialogResult.Yes)
         {
+            if (!_editor.ApplyPendingXml())
+            {
+                return;
+            }
+
             await RunAsync(SaveAllAsync);
             if (_workspace.HasUnsavedChanges)
             {
@@ -606,7 +621,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        _list.SelectIndex(selectIndex);
+        _list.SelectClosest(t => t is EntryTag e ? e.Index : null, selectIndex);
     }
 
     private static string[] EntryCells(XElement entry, EntryCategory category)
@@ -783,11 +798,25 @@ public sealed class MainForm : Form
 
     private async Task OpenCreatorAsync(CreatorMode mode)
     {
-        if (!_workspace.IsOpen)
+        if (!_workspace.IsOpen || _creatorOpen)
         {
             return;
         }
 
+        _creatorOpen = true;
+        try
+        {
+            await RunCreatorAsync(mode);
+        }
+        finally
+        {
+            _creatorOpen = false;
+        }
+    }
+
+    private async Task RunCreatorAsync(CreatorMode mode)
+    {
+        _editor.CommitEdit();
         UseWaitCursor = true;
         CreatorSession session;
         try
@@ -799,8 +828,25 @@ public sealed class MainForm : Form
             UseWaitCursor = false;
         }
 
+        _workspace.History.Close();
+        var revision = _workspace.History.Revision;
         using var form = new CreatorForm(mode, session.Engine, session.Data);
-        if (form.ShowDialog(this) != DialogResult.OK || form.Result is not { } created)
+        var result = form.ShowDialog(this);
+        if (result == DialogResult.Abort)
+        {
+            var reverted = _workspace.History.RollBack(revision);
+            if (_document is not null && reverted.Contains(_document.Document))
+            {
+                RefreshCategory();
+                FillEntries(SelectedEntryTags().FirstOrDefault()?.Index ?? 0);
+            }
+
+            UpdateHistoryCommands();
+            Dialogs.Error(this, $"The new entry could not be created, nothing was changed.\n\n{form.Failure?.Message}");
+            return;
+        }
+
+        if (result != DialogResult.OK || form.Result is not { } created)
         {
             return;
         }
@@ -885,6 +931,7 @@ public sealed class MainForm : Form
         SetStatus(result switch
         {
             null => $"{name} has no unsaved changes",
+            { LogError: { } error } => $"{name} saved · the change log could not be written: {error}",
             { Backup: null } => $"{name} saved · {changes} changes logged",
             { Backup: var backup } => $"{name} saved · backup from {Format.TimeWithSeconds(backup.Timestamp)} · {changes} changes logged"
         });
@@ -959,8 +1006,11 @@ public sealed class MainForm : Form
         UpdateSummary();
     }
 
-    private bool ConfirmDiscard() =>
-        !_workspace.HasUnsavedChanges || Dialogs.Confirm(this, "Unsaved changes will be lost. Continue?");
+    private bool ConfirmDiscard()
+    {
+        _editor.CommitEdit();
+        return !_workspace.HasUnsavedChanges && !_editor.HasPendingXml || Dialogs.Confirm(this, "Unsaved changes will be lost. Continue?");
+    }
 
     private void FocusFilter()
     {
@@ -977,7 +1027,7 @@ public sealed class MainForm : Form
 
         if (_searchForm is null || _searchForm.IsDisposed)
         {
-            _searchForm = new SearchForm(_workspace, hit => _ = RunAsync(() => NavigateAsync(hit.FilePath, hit.CategoryPath, hit.EntryIndex, hit.FieldPath)));
+            _searchForm = new SearchForm(_workspace, hit => _ = RunAsync(() => NavigateAsync(hit.FilePath, hit.CategoryPath, hit.EntryIndex, hit.FieldPath, hit.EntryTitle)));
             _searchForm.Show(this);
         }
         else

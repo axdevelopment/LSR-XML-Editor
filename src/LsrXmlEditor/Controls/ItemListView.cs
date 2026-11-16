@@ -227,6 +227,25 @@ public sealed class ItemListView : ListView
         return true;
     }
 
+    public void SelectClosest(Func<object, int?> position, int target)
+    {
+        var best = -1;
+        var distance = int.MaxValue;
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            if (position(_rows[i].Tag) is { } value && Math.Abs(value - target) < distance)
+            {
+                best = i;
+                distance = Math.Abs(value - target);
+            }
+        }
+
+        if (best >= 0)
+        {
+            SelectIndex(best);
+        }
+    }
+
     public void SelectIndex(int index)
     {
         if (_rows.Count == 0)

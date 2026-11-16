@@ -25,6 +25,8 @@ internal sealed class BasicsPage : CreatorPage
     private LocationType? _type;
     private CreatorDraft? _draft;
     private TextBox? _name;
+    private Control? _refocus;
+    private string? _refocusKey;
 
     public BasicsPage(CreatorMode mode, CreatorEngine engine, CreatorData data, Func<XElement, EntityKind, CreatorDraft> rebase)
         : base(CreatorStep.Basics, "Basics", Intro(mode))
@@ -44,11 +46,24 @@ internal sealed class BasicsPage : CreatorPage
         _ => LocationKind(_type)
     };
 
-    public void FocusName() => _name?.Focus();
+    public void FocusInitial()
+    {
+        if (_refocus is { IsDisposed: false } control)
+        {
+            control.Focus();
+        }
+        else
+        {
+            _name?.Focus();
+        }
+
+        _refocus = null;
+    }
 
     protected override void Bind(CreatorDraft draft)
     {
         _draft = draft;
+        _refocus = null;
         Clear();
         _boxes.Clear();
         var kind = draft.Kind;
@@ -64,10 +79,12 @@ internal sealed class BasicsPage : CreatorPage
                 if (!Loading && types.SelectedItem is Choice<LocationType> choice && _engine.Entries(LocationKind(choice.Value)).FirstOrDefault() is { } first)
                 {
                     _type = choice.Value;
+                    _refocusKey = "type";
                     _rebase(first, LocationKind(choice.Value));
                 }
             };
             AddRow("&Type:", types);
+            Remember("type", types);
         }
 
         if (_mode == CreatorMode.GangDen)
@@ -83,10 +100,12 @@ internal sealed class BasicsPage : CreatorPage
         {
             if (!Loading && template.SelectedItem is Choice<XElement> choice)
             {
+                _refocusKey = "template";
                 _rebase(choice.Value, kind);
             }
         };
         AddRow("&Copy of:", template);
+        Remember("template", template);
         AddHint($"Every setting you don't change here is taken over from this {kind.Title}.");
         if (_mode == CreatorMode.Location && draft.Main.HasOwner)
         {
@@ -149,17 +168,32 @@ internal sealed class BasicsPage : CreatorPage
 
             var gangId = choice.Value.Element(CreatorCatalog.IdField)?.Value.Trim() ?? string.Empty;
             var dens = _engine.Entries(CreatorCatalog.Den).Where(d => d.Element(CreatorCatalog.AssociationField)?.Value.Trim() == gangId).ToList();
+            _refocusKey = "owner";
             var current = dens.FirstOrDefault() is { } den && den != draft.Main.Template ? _rebase(den, CreatorCatalog.Den) : draft;
             current.OwnerGangId = gangId;
             current.PrimaryDen = !dens.Any(d => d.Element(CreatorCatalog.PrimaryDenField)?.Value == "true");
             if (current == draft)
             {
-                BeginInvoke(() => Present(current));
+                BeginInvoke(() =>
+                {
+                    Present(current);
+                    FocusInitial();
+                });
             }
 
             OnChanged();
         };
         AddRow("&Gang:", owner);
+        Remember("owner", owner);
+    }
+
+    private void Remember(string key, Control control)
+    {
+        if (_refocusKey == key)
+        {
+            _refocus = control;
+            _refocusKey = null;
+        }
     }
 
     private ComboBox OwnerPicker(CreatorDraft draft)
@@ -247,12 +281,17 @@ internal sealed class BasicsPage : CreatorPage
         return combo;
     }
 
-    private static string Describe(XElement entry, EntityKind kind)
+    private string Describe(XElement entry, EntityKind kind)
     {
         var key = entry.Element(kind.IdField ?? kind.NameField)?.Value.Trim() ?? string.Empty;
         var name = entry.Element(CreatorCatalog.FullNameField)?.Value.Trim();
         var text = string.IsNullOrEmpty(name) || name == key ? key : $"{key} – {name}";
-        return entry.Element(CreatorCatalog.AssociationField)?.Value.Trim() is { Length: > 0 } owner && kind == CreatorCatalog.Den ? $"{text} ({owner})" : text;
+        if (entry.Element(CreatorCatalog.AssociationField)?.Value.Trim() is { Length: > 0 } owner && kind == CreatorCatalog.Den)
+        {
+            text += $" ({owner})";
+        }
+
+        return _engine.SourceLabel(entry, kind.FileBase) is { } file ? $"{text} · {file}" : text;
     }
 
     private static EntityKind LocationKind(LocationType? type) =>

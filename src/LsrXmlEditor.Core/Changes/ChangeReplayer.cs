@@ -29,7 +29,7 @@ public static class ChangeReplayer
 
     private static ReplayStatus ApplyOne(EntryIndex index, ChangeOperation operation)
     {
-        var entry = index.Find(operation.EntryKey);
+        var entry = operation.Kind == ChangeKind.EntryAdded ? null : index.Resolve(operation.EntryKey, operation.Match);
         switch (operation.Kind)
         {
             case ChangeKind.FieldChanged:
@@ -58,7 +58,9 @@ public static class ChangeReplayer
                 return ReplayStatus.Applied;
 
             case ChangeKind.EntryAdded:
-                if (entry is not null)
+                var (baseKey, occurrence) = EntryIndex.Parse(operation.EntryKey);
+                var group = index.Group(baseKey);
+                if (occurrence == 0 && group.Count > 0 && !EntryIndex.IsKeyless(baseKey) || group.Any(e => XmlEditing.Serialize(e) == operation.EntryXml))
                 {
                     return ReplayStatus.AlreadyApplied;
                 }

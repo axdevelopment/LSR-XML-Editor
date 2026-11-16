@@ -98,7 +98,7 @@ internal sealed class PlacementEditor : FlowLayoutPanel
 
         var loading = _loading;
         _loading = true;
-        double[] values = [placement.X, placement.Y, placement.Z, placement.Heading];
+        double[] values = [placement.X, placement.Y, placement.Z, ((placement.Heading % 360) + 360) % 360];
         for (var i = 0; i < values.Length; i++)
         {
             _values[i].Value = Math.Clamp((decimal)values[i], _values[i].Minimum, _values[i].Maximum);

@@ -42,7 +42,7 @@ internal sealed class DenPage(CreatorEngine engine, IReadOnlyList<SavedPosition>
 
         var dens = engine.Entries(CreatorCatalog.Den).ToList();
         var template = Combo();
-        template.Items.AddRange([.. dens.Select(d => new Choice<XElement>(d, Describe(d)))]);
+        template.Items.AddRange([.. dens.Select(d => new Choice<XElement>(d, engine.SourceLabel(d, CreatorCatalog.LocationsFile) is { } file ? $"{Describe(d)} · {file}" : Describe(d)))]);
         template.SelectedIndex = dens.IndexOf(den.Template);
         template.SelectedIndexChanged += (_, _) =>
         {

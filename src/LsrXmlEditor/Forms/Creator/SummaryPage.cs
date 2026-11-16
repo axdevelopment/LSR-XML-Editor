@@ -20,6 +20,7 @@ internal sealed class SummaryPage : CreatorPage
     };
 
     private readonly ImageList _images = new() { ColorDepth = ColorDepth.Depth32Bit };
+    private readonly Image[] _icons = [StockImages.Small(StockIconId.Error), StockImages.Small(StockIconId.Warning), StockImages.Small(StockIconId.DocumentWithAssociation)];
     private readonly Action<CreatorStep> _jump;
     private readonly Dictionary<string, string> _zones;
 
@@ -35,9 +36,9 @@ internal sealed class SummaryPage : CreatorPage
         RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var size = LogicalToDeviceUnits(16);
         _images.ImageSize = new Size(size, size);
-        _images.Images.Add(ErrorKey, StockImages.Small(StockIconId.Error));
-        _images.Images.Add(WarningKey, StockImages.Small(StockIconId.Warning));
-        _images.Images.Add(ChangeKey, StockImages.Small(StockIconId.DocumentWithAssociation));
+        _images.Images.Add(ErrorKey, _icons[0]);
+        _images.Images.Add(WarningKey, _icons[1]);
+        _images.Images.Add(ChangeKey, _icons[2]);
         _list.SmallImageList = _images;
         _list.Columns.Add(string.Empty);
         _list.Resize += (_, _) => _list.Columns[0].Width = _list.ClientSize.Width - SystemInformation.VerticalScrollBarWidth;
@@ -96,6 +97,10 @@ internal sealed class SummaryPage : CreatorPage
         if (disposing)
         {
             _images.Dispose();
+            foreach (var icon in _icons)
+            {
+                icon.Dispose();
+            }
         }
 
         base.Dispose(disposing);

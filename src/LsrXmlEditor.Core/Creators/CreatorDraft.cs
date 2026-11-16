@@ -54,6 +54,10 @@ public sealed class LinkChoice(LinkField link, string templateId)
 
 public sealed class EntryDraft
 {
+    private readonly Dictionary<string, string> _appliedLinks = new(StringComparer.Ordinal);
+    private readonly List<XElement> _ownerSpawns;
+    private Placement? _appliedPlacement;
+    private bool _appliedAttached;
     private string _appliedOwner;
 
     public EntryDraft(EntityKind kind, XElement template)
@@ -63,12 +67,16 @@ public sealed class EntryDraft
         Entry = new XElement(template);
         Origin = Relocation.Read(template);
         Placement = Origin;
+        _appliedPlacement = Origin;
         AttachedPoints = Relocation.CountAttached(template);
         Links = [.. kind.Links.Where(l => template.Element(l.Field) is { HasElements: false }).Select(l => new LinkChoice(l, Original(l.Field)))];
         HasOwner = template.Element(CreatorCatalog.AssociationField) is { HasElements: false };
         OriginalOwner = Original(CreatorCatalog.AssociationField);
         Owner = OriginalOwner;
         _appliedOwner = OriginalOwner;
+        _ownerSpawns = OriginalOwner.Length == 0
+            ? []
+            : [.. Entry.Descendants(CreatorCatalog.SpawnAssociationField).Where(e => !e.HasElements && string.Equals(e.Value.Trim(), OriginalOwner, StringComparison.OrdinalIgnoreCase))];
     }
 
     public EntityKind Kind { get; }
@@ -107,15 +115,44 @@ public sealed class EntryDraft
     {
         foreach (var link in Links)
         {
-            Set(link.Link.Field, link.Value);
+            var value = link.Value;
+            if (!_appliedLinks.TryGetValue(link.Link.Field, out var applied) || applied != value)
+            {
+                Set(link.Link.Field, value);
+                _appliedLinks[link.Link.Field] = value;
+            }
         }
 
-        if (Placement is { } placement)
-        {
-            Relocation.Move(Entry, placement, MoveAttached);
-        }
-
+        ApplyPlacement();
         ApplyOwner();
+    }
+
+    private void ApplyPlacement()
+    {
+        if (Placement is not { } placement || _appliedPlacement is not { } applied || Origin is not { } origin)
+        {
+            return;
+        }
+
+        var unmoved = applied.Equals(origin);
+        if (applied.Equals(placement) && (MoveAttached == _appliedAttached || unmoved))
+        {
+            _appliedAttached = MoveAttached;
+            return;
+        }
+
+        if (MoveAttached == _appliedAttached || unmoved)
+        {
+            Relocation.Move(Entry, applied, placement, MoveAttached);
+        }
+        else
+        {
+            Relocation.Move(Entry, applied, origin, _appliedAttached);
+            Relocation.Move(Entry, origin, placement, MoveAttached);
+        }
+
+        _appliedPlacement = placement;
+        _appliedAttached = MoveAttached;
     }
 
     private void ApplyOwner()
@@ -126,15 +163,16 @@ public sealed class EntryDraft
         }
 
         var owner = Owner.Trim();
-        Set(CreatorCatalog.AssociationField, owner);
-        if (_appliedOwner.Length == 0 || owner.Length == 0)
+        if (string.Equals(owner, _appliedOwner, StringComparison.Ordinal))
         {
             return;
         }
 
-        foreach (var spawn in Entry.Descendants(CreatorCatalog.SpawnAssociationField).Where(e => !e.HasElements && string.Equals(e.Value.Trim(), _appliedOwner, StringComparison.OrdinalIgnoreCase)))
+        Set(CreatorCatalog.AssociationField, owner);
+        var spawnOwner = owner.Length > 0 ? owner : OriginalOwner;
+        foreach (var spawn in _ownerSpawns.Where(s => s.Parent is not null))
         {
-            XmlEditing.SetValue(spawn, owner);
+            XmlEditing.SetValue(spawn, spawnOwner);
         }
 
         _appliedOwner = owner;
@@ -154,6 +192,7 @@ public sealed class CreatorDraft
         Mode = mode;
         Engine = engine;
         Main = new EntryDraft(kind, template);
+        ShareMissing(Main);
         TemplateId = kind.IdField is { } idField ? Main.Original(idField) : string.Empty;
         Main.Set(kind.NameField, string.Empty);
         if (kind.IdField is { } field)
@@ -231,6 +270,8 @@ public sealed class CreatorDraft
 
     public bool IsManual(string field) => _manual.Contains(field);
 
+    public IReadOnlyCollection<string> ManualFields => _manual;
+
     public XElement? Group(LinkChoice link) =>
         link.Copy && link.Content is { } content ? content : Engine.FindGroup(link.Link.Kind, link.SourceId);
 
@@ -253,6 +294,7 @@ public sealed class CreatorDraft
     {
         var name = Den?.Get(CreatorCatalog.NameField);
         Den = new EntryDraft(CreatorCatalog.Den, template);
+        ShareMissing(Den);
         if (_denNameEdited && name is not null)
         {
             SetDenName(name, true);
@@ -275,6 +317,8 @@ public sealed class CreatorDraft
     }
 
     public void MarkManual(string field) => _manual.Add(field);
+
+    public void MarkDenNameEdited() => _denNameEdited = true;
 
     public void SetDenName(string name, bool manual)
     {
@@ -363,25 +407,31 @@ public sealed class CreatorDraft
         }
 
         var planned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var link in AllLinks.Where(l => l.Copy))
+        var links = Main.Links.Select(l => (Link: l, Step: CreatorStep.Linked))
+            .Concat(DenEnabled && Den is not null ? Den.Links.Select(l => (Link: l, Step: CreatorStep.Den)) : []);
+        foreach (var (link, step) in links.Where(l => l.Link.Copy))
         {
             var id = link.NewId.Trim();
             var label = link.Link.Label.ToLowerInvariant();
             if (link.SourceId.Length == 0)
             {
-                problems.Add(new(CreatorStep.Linked, $"Choose which group to copy for {label}.", true));
+                problems.Add(new(step, $"Choose which group to copy for {label}.", true));
+            }
+            else if (link.Content is null && Engine.FindGroup(link.Link.Kind, link.SourceId) is null)
+            {
+                problems.Add(new(step, $"{link.SourceId} ({label}) is not in {Engine.FileOf(link.Link.Kind.FileBase)} – share it or pick another group to copy.", true));
             }
             else if (id.Length == 0)
             {
-                problems.Add(new(CreatorStep.Linked, $"Enter a new ID for {label}.", true));
+                problems.Add(new(step, $"Enter a new ID for {label}.", true));
             }
             else if (!NameRules.IsValidId(id))
             {
-                problems.Add(new(CreatorStep.Linked, $"The new ID for {label} must not contain spaces.", true));
+                problems.Add(new(step, $"The new ID for {label} must not contain spaces or <>&\" characters.", true));
             }
             else if (Engine.GroupExists(link.Link.Kind, id) || !planned.Add(link.Link.Kind.Element + "|" + id))
             {
-                problems.Add(new(CreatorStep.Linked, $"The ID \"{id}\" for {label} is already taken.", true));
+                problems.Add(new(step, $"The ID \"{id}\" for {label} is already taken.", true));
             }
         }
 
@@ -441,6 +491,11 @@ public sealed class CreatorDraft
         {
             case CreatorMode.GangDen:
                 changes.Add(new(mainFile, $"Owned by {OwnerGangId}{(PrimaryDen ? " as its main den" : string.Empty)}"));
+                foreach (var den in PrimaryDen ? OtherMainDens() : [])
+                {
+                    changes.Add(new(Engine.FileOf(den), $"\"{den.Element(CreatorCatalog.NameField)?.Value.Trim()}\" is no longer the main den of {OwnerGangId}"));
+                }
+
                 break;
             case CreatorMode.Location when Main.OwnerChanged:
                 var owner = Main.Owner.Trim();
@@ -460,6 +515,11 @@ public sealed class CreatorDraft
 
     public XElement Commit()
     {
+        if (AllLinks.FirstOrDefault(l => l.Copy && l.Content is null && Engine.FindGroup(l.Link.Kind, l.SourceId) is null) is { } missing)
+        {
+            throw new InvalidOperationException($"{missing.SourceId} not found");
+        }
+
         var copies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var link in AllLinks.Where(l => l.Copy))
         {
@@ -475,6 +535,11 @@ public sealed class CreatorDraft
         {
             case CreatorMode.GangDen:
                 Main.Set(CreatorCatalog.PrimaryDenField, PrimaryDen ? TrueText : FalseText);
+                foreach (var den in PrimaryDen ? OtherMainDens() : [])
+                {
+                    CreatorEngine.SetChild(den, CreatorCatalog.PrimaryDenField, FalseText);
+                }
+
                 break;
             case CreatorMode.Gang:
                 CreatorEngine.SetList(Main.Entry, CreatorCatalog.EnemiesField, Enemies.Where(e => !Same(e, id)));
@@ -614,7 +679,7 @@ public sealed class CreatorDraft
         if (keys.Count > 0)
         {
             var list = string.Join(", ", keys.Select(k => label?.Invoke(k) ?? k).Order(StringComparer.CurrentCultureIgnoreCase));
-            changes.Add(new(Engine.FileOf(rows.FileBase), $"{keys.Count} {noun}{(keys.Count == 1 ? string.Empty : "s")}: {list}"));
+            changes.Add(new(Engine.RowsFile(rows, TemplateId), $"{keys.Count} {noun}{(keys.Count == 1 ? string.Empty : "s")}: {list}"));
         }
     }
 
@@ -631,6 +696,17 @@ public sealed class CreatorDraft
         if (interior.Length > 0 && interior != "-1" && Engine.InteriorAssociations(interior).Contains(draft.OriginalOwner, StringComparer.OrdinalIgnoreCase))
         {
             problems.Add(new(step, $"Interior {interior} still spawns {draft.OriginalOwner} people inside – it is shared in Interiors.xml and stays as it is.", false));
+        }
+    }
+
+    private List<XElement> OtherMainDens() =>
+        [.. Engine.Entries(CreatorCatalog.Den).Where(d => Same(d.Element(CreatorCatalog.AssociationField)?.Value, OwnerGangId) && Same(d.Element(CreatorCatalog.PrimaryDenField)?.Value, TrueText))];
+
+    private void ShareMissing(EntryDraft draft)
+    {
+        foreach (var link in draft.Links.Where(l => l.Copy && Engine.FindGroup(l.Link.Kind, l.SourceId) is null))
+        {
+            link.Copy = false;
         }
     }
 

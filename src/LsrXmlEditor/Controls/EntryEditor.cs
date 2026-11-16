@@ -17,6 +17,7 @@ public sealed class EntryEditor : UserControl
     private readonly Label _subtitle = new() { AutoSize = true, UseMnemonic = false, ForeColor = SystemColors.GrayText, Margin = new Padding(0, 2, 0, 0) };
     private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
     private readonly TabPage _xmlPage = new("XML");
+    private string _xmlLoaded = string.Empty;
     private readonly TextBox _xml = new()
     {
         Dock = DockStyle.Fill,
@@ -199,6 +200,18 @@ public sealed class EntryEditor : UserControl
         _subtitle.Text = subtitle;
     }
 
+    public bool HasPendingXml => _entry is not null && _tabs.SelectedTab == _xmlPage && _xml.Text != _xmlLoaded;
+
+    public bool ApplyPendingXml()
+    {
+        if (HasPendingXml)
+        {
+            ApplyXml();
+        }
+
+        return !HasPendingXml;
+    }
+
     public void CommitEdit()
     {
         if (Grid.ContainsFocus)
@@ -311,6 +324,7 @@ public sealed class EntryEditor : UserControl
     {
         _xmlStatus.Text = string.Empty;
         _xml.Text = _entry is null ? string.Empty : XmlEditing.Serialize(_entry).Replace("\r\n", "\n").Replace("\n", "\r\n");
+        _xmlLoaded = _xml.Text;
     }
 
     private void ApplyXml()
@@ -339,6 +353,7 @@ public sealed class EntryEditor : UserControl
 
         _entry.ReplaceWith(replacement);
         _entry = replacement;
+        _xmlLoaded = _xml.Text;
         ShowXmlStatus("Applied", isError: false);
         Rebind();
     }

@@ -36,7 +36,15 @@ public static class Relocation
 
     public static void Move(XElement entry, Placement target, bool attached)
     {
-        if (Read(entry) is not { } origin)
+        if (Read(entry) is { } origin)
+        {
+            Move(entry, origin, target, attached);
+        }
+    }
+
+    public static void Move(XElement entry, Placement origin, Placement target, bool attached)
+    {
+        if (entry.Element(EntranceElement) is not { } entrance || Vector(entrance) is null)
         {
             return;
         }
@@ -46,6 +54,7 @@ public static class Relocation
         {
             var radians = turn * Math.PI / 180;
             var (sin, cos) = Math.SinCos(radians);
+            var headings = new HashSet<XElement>();
             foreach (var point in Points(entry).ToList())
             {
                 var v = Vector(point.Element)!;
@@ -58,26 +67,34 @@ public static class Relocation
                 var dx = v[0] - origin.X;
                 var dy = v[1] - origin.Y;
                 Write(point.Element, target.X + dx * cos - dy * sin, target.Y + dx * sin + dy * cos, v[2] + target.Z - origin.Z);
-                if (point.Element.Parent?.Element(HeadingElement) is { HasElements: false } heading && Parse(heading.Value) is { } value)
-                {
-                    XmlEditing.SetValue(heading, Number(Normalize(value + turn)));
-                }
+                headings.UnionWith(point.Element.Parent?.Elements().Where(IsHeading) ?? []);
             }
 
-            foreach (var yaw in entry.Descendants(YawElement).Where(y => !y.HasElements && Parse(y.Value) is not (null or 0)).ToList())
+            foreach (var angle in headings.Concat(entry.Descendants(YawElement).Where(y => !y.HasElements && Parse(y.Value) is not (null or 0))).ToList())
             {
-                XmlEditing.SetValue(yaw, Number(Normalize(Parse(yaw.Value)!.Value + turn)));
+                XmlEditing.SetValue(angle, Number(Normalize(Parse(angle.Value)!.Value + turn)));
             }
         }
 
-        Write(entry.Element(EntranceElement)!, target.X, target.Y, target.Z);
+        Write(entrance, target.X, target.Y, target.Z);
         if (entry.Element(EntranceHeading) is { } entranceHeading)
         {
             XmlEditing.SetValue(entranceHeading, Number(Normalize(target.Heading)));
         }
     }
 
-    public static string Number(double value) => value.ToString("0.####", CultureInfo.InvariantCulture);
+    private static bool IsHeading(XElement element) =>
+        !element.HasElements
+        && element.Name.LocalName.EndsWith(HeadingElement, StringComparison.Ordinal)
+        && element.Name.LocalName != EntranceHeading
+        && Parse(element.Value) is { } value
+        && (value != 0 || element.Name.LocalName == HeadingElement);
+
+    public static string Number(double value)
+    {
+        var rounded = Math.Round(value, 4);
+        return (rounded == 0 ? 0 : rounded).ToString("0.####", CultureInfo.InvariantCulture);
+    }
 
     private static IEnumerable<(XElement Element, bool IsDirection)> Points(XElement entry) =>
         entry.Descendants()

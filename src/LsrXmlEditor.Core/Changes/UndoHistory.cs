@@ -21,6 +21,8 @@ public sealed class UndoHistory
 
     public bool CanRedo => _redo.Count > 0;
 
+    public int Revision { get; private set; }
+
     public string? UndoTarget => _undo.Last is { } last ? Describe(last.Value) : null;
 
     public string? RedoTarget => _redo.TryPeek(out var step) ? Describe(step) : null;
@@ -79,6 +81,32 @@ public sealed class UndoHistory
     public void Close() => _open = null;
 
     public IReadOnlyCollection<XDocument> Undo() => Replay(_undo.Last?.Value, fromUndo: true);
+
+    public IReadOnlyCollection<XDocument> RollBack(int revision)
+    {
+        if (Revision == revision || _undo.Last?.Value is not { } step)
+        {
+            return [];
+        }
+
+        _undo.RemoveLast();
+        _open = null;
+        _replaying = new Step();
+        try
+        {
+            for (var i = step.Operations.Count - 1; i >= 0; i--)
+            {
+                step.Operations[i].Revert();
+            }
+        }
+        finally
+        {
+            _replaying = null;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return step.Documents;
+    }
 
     public IReadOnlyCollection<XDocument> Redo() => Replay(_redo.TryPeek(out var step) ? step : null, fromUndo: false);
 
@@ -174,6 +202,7 @@ public sealed class UndoHistory
         if (_open is null)
         {
             _open = new Step();
+            Revision++;
             Append(_open);
             _redo.Clear();
             Changed?.Invoke(this, EventArgs.Empty);

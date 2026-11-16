@@ -112,5 +112,5 @@ public static class StructureAnalyzer
         return any;
     }
 
-    private static bool IsBlank(XElement element) => !element.HasElements && element.Value.Length == 0;
+    private static bool IsBlank(XElement element) => !element.HasElements && string.IsNullOrWhiteSpace(element.Value);
 }

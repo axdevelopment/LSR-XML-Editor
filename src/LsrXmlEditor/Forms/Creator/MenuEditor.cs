@@ -88,19 +88,20 @@ internal sealed class MenuEditor : TableLayoutPanel
     {
         _grid.Size = new Size(LogicalToDeviceUnits(640), LogicalToDeviceUnits(260));
         _grid.ReadOnly = !_editable;
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Item", Width = LogicalToDeviceUnits(220), ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Type", Width = LogicalToDeviceUnits(80), ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Item", Width = LogicalToDeviceUnits(220), ReadOnly = true, ValueType = typeof(string) });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Type", Width = LogicalToDeviceUnits(80), ReadOnly = true, ValueType = typeof(string) });
         foreach (var (_, header, width) in NumberColumns)
         {
             _grid.Columns.Add(new DataGridViewTextBoxColumn
             {
                 HeaderText = header,
                 Width = LogicalToDeviceUnits(width),
+                ValueType = typeof(int),
                 DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight }
             });
         }
 
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "Illicit", Width = LogicalToDeviceUnits(50) });
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn { HeaderText = "Illicit", Width = LogicalToDeviceUnits(50), ValueType = typeof(bool) });
         _grid.CellValidating += (_, e) =>
         {
             if (!_loading && IsNumberColumn(e.ColumnIndex) && !int.TryParse(Convert.ToString(e.FormattedValue, CultureInfo.CurrentCulture), NumberStyles.Integer, CultureInfo.CurrentCulture, out int _))

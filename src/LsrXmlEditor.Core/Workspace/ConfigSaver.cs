@@ -5,7 +5,7 @@ using LsrXmlEditor.Core.Xml;
 
 namespace LsrXmlEditor.Core.Workspace;
 
-public sealed record SaveResult(BackupInfo? Backup, ChangeSet? Changes);
+public sealed record SaveResult(BackupInfo? Backup, ChangeSet? Changes, string? LogError = null);
 
 public sealed class ExternalChangeException(string filePath)
     : IOException($"{Path.GetFileName(filePath)} was changed by another program after it was opened.")
@@ -34,12 +34,20 @@ public sealed class ConfigSaver(string folder, BackupService backups, ChangeLogS
         var backup = backups.Create(folder, snapshot.FilePath);
         snapshot.Save();
 
-        if (changeSet is not null)
+        if (changeSet is null)
         {
-            changeLog.Append(changeSet);
+            return new SaveResult(backup, null);
         }
 
-        return new SaveResult(backup, changeSet);
+        try
+        {
+            changeLog.Append(changeSet);
+            return new SaveResult(backup, changeSet);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new SaveResult(backup, null, ex.Message);
+        }
     }
 
     private ChangeSet? Diff(DocumentSnapshot snapshot)

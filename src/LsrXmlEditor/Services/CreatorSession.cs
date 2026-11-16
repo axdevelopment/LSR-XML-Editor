@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Xml.Linq;
 using LsrXmlEditor.Core.Creators;
+using LsrXmlEditor.Core.Files;
 using LsrXmlEditor.Core.Text;
 using LsrXmlEditor.Core.Xml;
 
@@ -61,9 +62,9 @@ public sealed class CreatorSession
         foreach (var name in Files)
         {
             var files = workspace.Files
-                .Where(f => string.Equals(f.File.BaseName, name, StringComparison.OrdinalIgnoreCase))
+                .Where(f => f.File.IsInRootFolder && f.File.Kind != LsrFileKind.ReplacementVariant && string.Equals(f.File.BaseName, name, StringComparison.OrdinalIgnoreCase))
                 .OrderBy(f => f.File.IsVariant)
-                .ThenBy(f => !f.File.IsInRootFolder)
+                .ThenBy(f => f.File.FileName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var loaded = new List<XmlConfigDocument>();
             foreach (var file in files)

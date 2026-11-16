@@ -12,6 +12,8 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
     private const string PriorityField = "Priority";
     private const string MenuItemElement = "MenuItem";
     private const string ItemsSuffix = "Items";
+    private const string GroupNameField = "GroupName";
+    private const string ContainerGroupField = "ShopMenuGroupID";
 
     private IReadOnlyList<ModItemInfo>? _items;
     private HashSet<string>? _itemNames;
@@ -24,18 +26,21 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
 
     public string FileOf(string fileBase) => documents(fileBase).FirstOrDefault() is { } document ? fileName(document) : fileBase + ".xml";
 
+    public string? SourceLabel(XElement element, string fileBase) =>
+        FileOf(element) is { Length: > 0 } file && !string.Equals(file, FileOf(fileBase), StringComparison.OrdinalIgnoreCase) ? file : null;
+
     public IEnumerable<XElement> Entries(EntityKind kind) => Shallow(kind.FileBase, kind.Element);
 
     public bool EntryExists(EntityKind kind, string id) =>
         kind.IdField is { } field && Entries(kind).Any(e => Same(e.Element(field)?.Value, id));
 
     public XElement? FindEntry(EntityKind kind, string id) =>
-        kind.IdField is { } field ? Entries(kind).FirstOrDefault(e => Same(e.Element(field)?.Value, id)) : null;
+        kind.IdField is { } field ? Entries(kind).LastOrDefault(e => Same(e.Element(field)?.Value, id)) : null;
 
     public IEnumerable<XElement> Groups(GroupKind kind) => Shallow(kind.FileBase, kind.Element);
 
     public XElement? FindGroup(GroupKind kind, string id) =>
-        Groups(kind).FirstOrDefault(e => Same(e.Element(kind.IdElement)?.Value, id));
+        Groups(kind).LastOrDefault(e => Same(e.Element(kind.IdElement)?.Value, id));
 
     public bool GroupExists(GroupKind kind, string id) => FindGroup(kind, id) is not null;
 
@@ -65,8 +70,13 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
     {
         var source = FindGroup(kind, sourceId) ?? throw new InvalidOperationException($"{sourceId} not found");
         var copy = new XElement(content ?? source);
-        XmlEditing.InsertAfter(source, copy);
         SetChild(copy, kind.IdElement, newId);
+        foreach (var name in copy.Descendants(GroupNameField).Where(e => !e.HasElements && Same(e.Value, sourceId)))
+        {
+            XmlEditing.SetValue(name, newId);
+        }
+
+        XmlEditing.InsertAfter(source, copy);
         return copy;
     }
 
@@ -84,7 +94,12 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
         var places = Locations()
             .Where(e => Uses(e, fields, id))
             .Select(e => e.Element(CreatorCatalog.NameField)?.Value.Trim() ?? string.Empty);
-        return [.. organizations.Concat(places).Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)];
+        var containers = kind == CreatorCatalog.ShopMenuGroup
+            ? Groups(CreatorCatalog.ShopMenuGroupContainer)
+                .Where(c => c.Descendants(ContainerGroupField).Any(g => Same(g.Value, id)))
+                .Select(c => $"{c.Element(CreatorCatalog.IdField)?.Value.Trim()} (area dealers)")
+            : [];
+        return [.. organizations.Concat(places).Concat(containers).Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     public IReadOnlyList<(string Id, string Title)> OwnerChoices() =>
@@ -122,11 +137,12 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
 
     public static void Insert(XElement template, XElement entry) => XmlEditing.Append(template.Parent!, entry, template.Name);
 
+    public string RowsFile(AreaRows rows, string templateOwner) =>
+        RowTemplate(rows, templateOwner) is { } template ? FileOf(template) : FileOf(rows.FileBase);
+
     public int AddRows(AreaRows rows, string owner, string templateOwner, IEnumerable<string> keys)
     {
-        var existing = Rows(rows).ToList();
-        var template = existing.FirstOrDefault(e => Same(e.Element(rows.OwnerField)?.Value, templateOwner)) ?? existing.FirstOrDefault();
-        if (template is null)
+        if (RowTemplate(rows, templateOwner) is not { } template)
         {
             return 0;
         }
@@ -200,8 +216,14 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
             .SelectMany(d => d.Root?.Elements() ?? [])
             .SelectMany(c => c.Name.LocalName == element ? Enumerable.Repeat(c, 1) : c.Elements(element));
 
+    private XElement? RowTemplate(AreaRows rows, string templateOwner)
+    {
+        var existing = Rows(rows).ToList();
+        return existing.FirstOrDefault(e => Same(e.Element(rows.OwnerField)?.Value, templateOwner)) ?? existing.FirstOrDefault();
+    }
+
     private IEnumerable<XElement> Locations() =>
-        documents(CreatorCatalog.LocationsFile).Take(1).SelectMany(d => d.Root?.Elements() ?? []).SelectMany(c => c.Elements());
+        documents(CreatorCatalog.LocationsFile).SelectMany(d => d.Root?.Elements() ?? []).SelectMany(c => c.Elements());
 
     private static bool Uses(XElement entry, IReadOnlyList<string> fields, string id) =>
         fields.Any(f => Same(entry.Element(f)?.Value, id));
@@ -209,7 +231,7 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
     private static string Category(string container) =>
         DisplayNames.Humanize(container.EndsWith(ItemsSuffix, StringComparison.Ordinal) && container.Length > ItemsSuffix.Length ? container[..^ItemsSuffix.Length] : container);
 
-    private IEnumerable<XElement> Rows(AreaRows rows) => documents(rows.FileBase).Take(1).SelectMany(d => d.Root?.Elements(rows.Element) ?? []);
+    private IEnumerable<XElement> Rows(AreaRows rows) => documents(rows.FileBase).SelectMany(d => d.Root?.Elements(rows.Element) ?? []);
 
     private static (string Outer, string Inner, string Newline) Indents(XElement list)
     {

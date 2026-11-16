@@ -61,7 +61,7 @@ internal sealed class AreaPage(CreatorMode mode, CreatorEngine engine, CreatorDa
         var list = new CheckList();
         list.Bind(items, selected);
         list.Toggled += (_, _) => OnChanged();
-        var same = new Button { Text = $"Same as {draft.TemplateId}", AutoSize = true };
+        var same = new Button { Text = $"Same as {draft.TemplateId}", AutoSize = true, UseMnemonic = false };
         same.Click += (_, _) =>
         {
             selected.UnionWith(engine.Owned(rows, draft.TemplateId));

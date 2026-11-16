@@ -88,11 +88,15 @@ internal sealed class SettingsPage : CreatorPage
 
     private void OnFieldsChanged(CreatorDraft draft, EntryDraft target, IReadOnlyList<XElement> changed)
     {
-        if (target == draft.Main)
+        foreach (var element in changed.Where(e => e.Parent == target.Entry))
         {
-            foreach (var element in changed.Where(e => e.Parent == target.Entry))
+            if (target == draft.Main)
             {
                 draft.MarkManual(element.Name.LocalName);
+            }
+            else if (element.Name.LocalName is CreatorCatalog.NameField or CreatorCatalog.FullNameField)
+            {
+                draft.MarkDenNameEdited();
             }
         }
 

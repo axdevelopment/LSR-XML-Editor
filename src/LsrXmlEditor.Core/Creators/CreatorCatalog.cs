@@ -72,6 +72,11 @@ public static class CreatorCatalog
     public static readonly GroupKind Heads = new("Heads", "HeadDataGroup", "HeadDataGroupID");
     public static readonly GroupKind ShopMenu = new("ShopMenus", "ShopMenu", "ID");
     public static readonly GroupKind ShopMenuGroup = new("ShopMenus", "ShopMenuGroup", "ID");
+    public static readonly GroupKind ShopMenuGroupContainer = new("ShopMenus", "ShopMenuGroupContainer", "ID");
+    public static readonly GroupKind ClothingMenu = new("ShopMenus", "PedClothingShopMenu", "ID");
+    public static readonly GroupKind BarberMenu = new("ShopMenus", "PedVariationShopMenu", "ID");
+    public static readonly GroupKind ModShopMenu = new("ShopMenus", "VehicleVariationShopMenu", "ID");
+    public static readonly GroupKind Treatments = new("ShopMenus", "TreatmentOptions", "ID");
 
     public static readonly EntityKind Gang = new(
         "gang",
@@ -119,6 +124,10 @@ public static class CreatorCatalog
     public static readonly IReadOnlyList<LinkField> LocationLinks =
     [
         MenuLink,
+        new("PedClothingShopMenuID", "Clothing menu", ClothingMenu, "Clothes", false),
+        new("PedVariationShopMenuID", "Barber menu", BarberMenu, "Barber", false),
+        new("VehicleVariationShopMenuID", "Mod shop menu", ModShopMenu, "ModShop", false),
+        new("TreatmentOptionsID", "Treatments", Treatments, "Treatments", false),
         new("VendorPersonnelID", "Staff", Peds, "StaffPeds", false),
         new("VendorMeleeWeaponsID", "Staff melee weapons", Weapons, "StaffMelee", false),
         new("VendorSidearmWeaponsID", "Staff sidearms", Weapons, "StaffSidearms", false),

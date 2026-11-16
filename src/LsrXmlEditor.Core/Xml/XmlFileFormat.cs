@@ -1,13 +1,16 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
 namespace LsrXmlEditor.Core.Xml;
 
-public sealed record XmlFileFormat(Encoding Encoding, string? Declaration, string NewLine, string Trailing)
+public sealed partial record XmlFileFormat(Encoding Encoding, string? Declaration, string NewLine, string Trailing)
 {
     private const int ProbeSize = 4096;
     private const int WriteBufferSize = 1 << 16;
+
+    static XmlFileFormat() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
     public static XmlFileFormat Detect(Stream stream)
     {
@@ -19,6 +22,12 @@ public sealed record XmlFileFormat(Encoding Encoding, string? Declaration, strin
         var (encoding, bomLength) = DetectEncoding(head);
         var text = encoding.GetString(head[bomLength..]);
         var declaration = ReadDeclaration(text.TrimStart());
+        if (bomLength == 0 && Declared(declaration) is { } declared)
+        {
+            encoding = declared;
+            text = encoding.GetString(head);
+        }
+
         var lf = text.IndexOf('\n');
         var newLine = lf > 0 && text[lf - 1] == '\r' ? "\r\n" : lf >= 0 ? "\n" : "\r\n";
 
@@ -69,6 +78,27 @@ public sealed record XmlFileFormat(Encoding Encoding, string? Declaration, strin
         var end = text.IndexOf("?>", StringComparison.Ordinal);
         return end < 0 ? null : text[..(end + 2)];
     }
+
+    private static Encoding? Declared(string? declaration)
+    {
+        if (declaration is null || EncodingName().Match(declaration) is not { Success: true } match)
+        {
+            return null;
+        }
+
+        try
+        {
+            var encoding = Encoding.GetEncoding(match.Groups[1].Value);
+            return encoding.CodePage is 65001 or 1200 or 1201 ? null : encoding;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    [GeneratedRegex(@"encoding\s*=\s*[""']([^""']+)[""']", RegexOptions.IgnoreCase)]
+    private static partial Regex EncodingName();
 
     private static (Encoding Encoding, int BomLength) DetectEncoding(ReadOnlySpan<byte> head)
     {

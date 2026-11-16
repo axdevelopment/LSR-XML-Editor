@@ -79,11 +79,11 @@ public sealed class BackupService(string backupRoot, int keepPerFile = BackupSer
 
     private void Prune(string relative)
     {
-        var expired = List()
+        var all = List()
             .Where(b => string.Equals(b.RelativePath, relative, StringComparison.OrdinalIgnoreCase))
-            .Skip(keepPerFile);
+            .ToList();
 
-        foreach (var backup in expired)
+        foreach (var backup in all.Take(all.Count - 1).Skip(Math.Max(1, keepPerFile)))
         {
             File.Delete(backup.BackupPath);
             var dir = Path.GetDirectoryName(backup.BackupPath)!;

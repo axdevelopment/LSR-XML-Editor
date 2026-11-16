@@ -34,6 +34,10 @@ internal sealed class LinkEditor : FlowLayoutPanel
         _mode.Items.AddRange([CopyText, ShareText]);
         _group.Items.Add(new Choice<string>(string.Empty, NoneText));
         _group.Items.AddRange([.. groups]);
+        if (link.SourceId.Length > 0 && !groups.Any(g => string.Equals(g.Value, link.SourceId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _group.Items.Add(new Choice<string>(link.SourceId, $"{link.SourceId} (not found)"));
+        }
         Controls.AddRange([_mode, _group, _arrow, _newId, _usage]);
 
         _mode.SelectedIndexChanged += (_, _) =>

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace LsrXmlEditor.Core.Creators;
@@ -73,7 +74,8 @@ public static partial class NameRules
 
     public static IEnumerable<double> Numbers(string text)
     {
-        var decimalComma = !text.Contains('.') && CommaDecimal().IsMatch(text);
+        var tokens = Separators().Split(text.Trim());
+        var decimalComma = !text.Contains('.') && tokens.Any(t => t.Contains(',')) && tokens.Count(t => CommaToken().IsMatch(t)) >= 3;
         var pattern = decimalComma ? CommaNumber() : DotNumber();
         foreach (Match match in pattern.Matches(text))
         {
@@ -90,13 +92,28 @@ public static partial class NameRules
         return value.StartsWith("The ", StringComparison.OrdinalIgnoreCase) ? value[4..] : value;
     }
 
-    private static IEnumerable<string> Words(string text) => WordSplit().Split(text).Where(p => p.Length > 0);
+    private static IEnumerable<string> Words(string text) => WordSplit().Split(Fold(text)).Where(p => p.Length > 0);
+
+    private static string Fold(string text)
+    {
+        var decomposed = text.Replace("ß", "ss", StringComparison.Ordinal).Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        foreach (var c in decomposed.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark))
+        {
+            builder.Append(c);
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
 
     [GeneratedRegex("[^A-Za-z0-9]+")]
     private static partial Regex WordSplit();
 
-    [GeneratedRegex(@"-?\d+,\d+")]
-    private static partial Regex CommaDecimal();
+    [GeneratedRegex(@"[\s;]+")]
+    private static partial Regex Separators();
+
+    [GeneratedRegex(@"^-?\d+(?:,\d+)?$")]
+    private static partial Regex CommaToken();
 
     [GeneratedRegex(@"(?<![A-Za-z0-9_])-?\d+(?:,\d+)?")]
     private static partial Regex CommaNumber();
