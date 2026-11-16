@@ -2,7 +2,7 @@
 
 # LSR XML Editor
 
-**Version 0.4**
+**Version 0.5**
 
 A Windows editor for the XML configuration files of Los Santos RED (GTA V mod), with creators for gangs, dens, shops and police agencies and an optional 3D viewer for peds, vehicles, weapons, items and animations.
 Runs completely offline – no auto-updater, no downloads, no telemetry.
@@ -27,6 +27,23 @@ Runs completely offline – no auto-updater, no downloads, no telemetry.
 - Automatic backup before every save, restore via *Tools → Backups*.
 - Change log: every save is recorded as a diff and can be reapplied after an LSR update (*Tools → Change log*).
 - Formatting is preserved: unchanged files are written back byte for byte.
+- Six color themes and text sizes from 100 to 200 % (*Tools → Options*).
+
+## Themes and text size
+
+*Tools → Options* picks a color theme and the text size. **Apply** switches the look right away – open files, unsaved changes and undo stay as they are.
+
+- **Light** (Windows default), **Dark**, **Midnight purple**, **Deep teal**, **Sand** and **High contrast**, or **Same as Windows** to follow the Windows light/dark setting
+- every theme has its own font, hover and selection colors; text contrast meets WCAG AA (4.5:1), High contrast meets AAA (7:1)
+- text size 100, 115, 130, 150, 175 or 200 % – lists, columns, the property grid, the XML view and the creators grow along
+
+| | |
+| --- | --- |
+| ![Light](docs/themes/light.png)<br>Light | ![Dark](docs/themes/dark.png)<br>Dark |
+| ![Midnight purple](docs/themes/purple.png)<br>Midnight purple | ![Deep teal](docs/themes/teal.png)<br>Deep teal |
+| ![Sand](docs/themes/sand.png)<br>Sand | ![High contrast](docs/themes/contrast.png)<br>High contrast |
+
+![Options](docs/options.png)
 
 ## Creators
 
@@ -127,7 +144,7 @@ The plugin builds into `src/LsrXmlEditor/bin/<Configuration>/net10.0-windows/Ped
 ## Project structure
 
 ```
-src/LsrXmlEditor.Core           XML model, structure detection, scanner, backups, diff/replay, search
+src/LsrXmlEditor.Core           XML model, structure detection, scanner, backups, diff/replay, search, themes
 src/LsrXmlEditor                Windows Forms UI
 src/LsrXmlEditor.PedViewer      optional 3D viewer plugin (WPF, CodeWalker.Core)
 tests/LsrXmlEditor.Tests        round-trip, diff, replay and search tests against real LSR files
