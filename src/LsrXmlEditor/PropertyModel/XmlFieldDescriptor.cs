@@ -36,7 +36,10 @@ public sealed class XmlFieldDescriptor : PropertyDescriptor, ILockableField
         _kind = IsLeaf ? owner.Context.Kinds.KindOf(element, owner.Context.Entry) : ValueKind.Text;
         _gameReference = IsLeaf ? GameReferences.Describe(element) : null;
         ItemIndex = itemIndex;
+        Suggestions = IsLeaf && owner.Context.Suggestions is { } suggestions && suggestions.Offers(element) ? suggestions : null;
     }
+
+    public IValueSuggestions? Suggestions { get; }
 
     public XElement Element { get; }
 
@@ -61,12 +64,14 @@ public sealed class XmlFieldDescriptor : PropertyDescriptor, ILockableField
         : IsLeaf ? FieldCategories.Values : Child.IsCollection ? FieldCategories.Lists : FieldCategories.Details;
 
     public override string Description => !IsLeaf
-        ? $"XML element <{Element.Name.LocalName}> · {Child.Summary}"
+        ? $"XML element <{Element.Name.LocalName}> · {Child.Summary}{ListHint}"
         : IsLocked
             ? $"Locked · {_gameReference} in <{Element.Name.LocalName}>. This name comes from GTA V itself – changing it usually breaks LSR. Click the … button on the right to unlock."
             : _gameReference is not null
                 ? $"Unlocked · {_gameReference} in <{Element.Name.LocalName}> · Type: {KindLabel}. Only change it if you know the exact game name."
-                : $"XML field <{Element.Name.LocalName}> · Type: {KindLabel}";
+                : Suggestions is { } suggestions
+                    ? SuggestionHint(suggestions)
+                    : $"XML field <{Element.Name.LocalName}> · Type: {KindLabel}";
 
     public override Type ComponentType => typeof(XmlNodeObject);
 
@@ -80,8 +85,11 @@ public sealed class XmlFieldDescriptor : PropertyDescriptor, ILockableField
         ? XmlNodeConverter.Instance
         : IsLocked ? LockedValueConverter.Instance : TypeDescriptor.GetConverter(PropertyType);
 
-    public override object? GetEditor(Type editorBaseType) =>
-        IsLocked && editorBaseType == typeof(UITypeEditor) ? GameReferenceEditor.Instance : base.GetEditor(editorBaseType);
+    public override object? GetEditor(Type editorBaseType) => editorBaseType != typeof(UITypeEditor)
+        ? base.GetEditor(editorBaseType)
+        : IsLocked ? GameReferenceEditor.Instance
+        : Suggestions is not null ? SuggestionEditor.Instance
+        : base.GetEditor(editorBaseType);
 
     public string LockedValue => Element.Value;
 
@@ -90,6 +98,16 @@ public sealed class XmlFieldDescriptor : PropertyDescriptor, ILockableField
     private XmlNodeObject Child => _child ??= new XmlNodeObject(Element, _owner.Context);
 
     private string KindLabel => FieldValues.LabelFor(_kind);
+
+    private string SuggestionHint(IValueSuggestions suggestions)
+    {
+        var value = Element.Value.Trim();
+        return value.Length == 0 ? $"Empty · click ▼ to pick an item from {suggestions.Source}."
+            : suggestions.Contains(value) ? $"Item from {suggestions.Source} · click ▼ to pick another one."
+            : $"There is no item named \"{value}\" in {suggestions.Source} – LSR cannot use it. Click ▼ to pick one.";
+    }
+
+    private string ListHint => IsCollectionItem ? " · Right-click to add, duplicate or remove." : Child.IsCollection ? " · Right-click to add an element." : string.Empty;
 
     public override bool CanResetValue(object component) => false;
 

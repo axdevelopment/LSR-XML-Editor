@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Xml;
 using System.Xml.Linq;
+using LsrXmlEditor.Core.Text;
 using LsrXmlEditor.Core.Xml;
 using LsrXmlEditor.Infrastructure;
 using LsrXmlEditor.PropertyModel;
@@ -51,10 +53,12 @@ public sealed class EntryEditor : UserControl
     };
 
     private readonly Label _xmlStatus = new() { AutoSize = true, UseMnemonic = false, Padding = new Padding(8, 7, 0, 0) };
+    private readonly ToolStripMenuItem _addItem = new("&Add element");
     private readonly ToolStripMenuItem _cloneItem = new("&Duplicate element");
     private readonly ToolStripMenuItem _removeItem = new("&Remove element");
     private XElement? _entry;
     private FieldKindIndex? _kinds;
+    private XElement? _addTarget;
 
     public EntryEditor()
     {
@@ -106,14 +110,18 @@ public sealed class EntryEditor : UserControl
         };
 
         var menu = new ContextMenuStrip();
-        menu.Items.AddRange([_cloneItem, _removeItem]);
+        menu.Items.AddRange([_addItem, _cloneItem, _removeItem]);
         UiTheme.Fit(menu);
         menu.Opening += (_, e) =>
         {
             var enabled = SelectedItemDescriptor is not null;
             _cloneItem.Enabled = enabled;
             _removeItem.Enabled = enabled;
+            _addTarget = SelectedList();
+            _addItem.Enabled = _addTarget is not null;
+            _addItem.Text = _addTarget is null ? "&Add element" : $"&Add element to {DisplayNames.Humanize(_addTarget.Name.LocalName)}";
         };
+        _addItem.Click += (_, _) => AddItem();
         _cloneItem.Click += (_, _) => CloneSelectedItem();
         _removeItem.Click += (_, _) => RemoveSelectedItem();
         Grid.ContextMenuStrip = menu;
@@ -134,6 +142,9 @@ public sealed class EntryEditor : UserControl
     public event EventHandler<IReadOnlyList<XElement>>? MultiFieldChanged;
 
     public PropertyGrid Grid { get; }
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public IValueSuggestions? Suggestions { get; set; }
 
     public XElement? Entry => _entry;
 
@@ -171,7 +182,7 @@ public sealed class EntryEditor : UserControl
             _tabs.TabPages.Remove(_xmlPage);
         }
 
-        var context = new EditContext(entries, kinds, changed => MultiFieldChanged?.Invoke(this, changed), RefreshGrid);
+        var context = new EditContext(entries, kinds, changed => MultiFieldChanged?.Invoke(this, changed), RefreshGrid) { Suggestions = Suggestions };
         Grid.SelectedObject = new MultiNodeObject(entries, context);
         _hint.Visible = false;
         _tabs.Visible = true;
@@ -277,7 +288,7 @@ public sealed class EntryEditor : UserControl
         Grid.SelectedGridItem?.PropertyDescriptor is XmlFieldDescriptor { IsCollectionItem: true } descriptor ? descriptor : null;
 
     private EditContext CreateContext(XElement entry, FieldKindIndex kinds) =>
-        new([entry], kinds, changed => FieldChanged?.Invoke(this, changed[0]), RefreshGrid);
+        new([entry], kinds, changed => FieldChanged?.Invoke(this, changed[0]), RefreshGrid) { Suggestions = Suggestions };
 
     private void RefreshGrid() => BeginInvoke(Grid.Refresh);
 
@@ -294,8 +305,42 @@ public sealed class EntryEditor : UserControl
             return;
         }
 
-        XmlEditing.CloneAfter(descriptor.Element);
+        Reveal(XmlEditing.CloneAfter(descriptor.Element));
+    }
+
+    private XElement? SelectedList()
+    {
+        if (_entry is null || Grid.SelectedGridItem?.PropertyDescriptor is not XmlFieldDescriptor field)
+        {
+            return null;
+        }
+
+        for (var element = field.IsCollectionItem ? field.Element.Parent : field.Element; element is not null && element != _entry; element = element.Parent)
+        {
+            if (XmlEditing.ItemTemplate(element) is not null)
+            {
+                return element;
+            }
+        }
+
+        return null;
+    }
+
+    private void AddItem()
+    {
+        if (_addTarget is { } list && XmlEditing.ItemTemplate(list) is { } template)
+        {
+            Reveal(XmlEditing.AddItem(list, template));
+        }
+    }
+
+    private void Reveal(XElement element)
+    {
         Rebind();
+        if (_entry is not null)
+        {
+            RevealField(XmlEditing.PathOf(element, _entry));
+        }
     }
 
     private void RemoveSelectedItem()

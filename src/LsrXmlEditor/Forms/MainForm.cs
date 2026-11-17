@@ -96,6 +96,7 @@ public sealed class MainForm : Form
     private SearchForm? _searchForm;
     private bool _closeConfirmed;
     private bool _rebuilding;
+    private readonly ModItemNames _itemNames;
     private bool _creatorOpen;
 
     public MainForm(Workspace workspace, string? startFolder, MainFormState? restore = null)
@@ -103,6 +104,8 @@ public sealed class MainForm : Form
         _workspace = workspace;
         _startFolder = startFolder;
         _restore = restore;
+        _itemNames = new ModItemNames(workspace);
+        _editor.Suggestions = _itemNames;
         Font = UiTheme.Font;
         _headerFont = new Font(Font, FontStyle.Bold);
         SuspendLayout();
@@ -179,6 +182,7 @@ public sealed class MainForm : Form
 
     private void ShowWorkspace()
     {
+        _itemNames.Warm();
         _tree.Populate(_workspace);
         UpdateRecentMenu();
         UpdateSummary();
@@ -232,8 +236,13 @@ public sealed class MainForm : Form
     protected override async void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        if (_restore is { } restore && _workspace.IsOpen)
+        if (_restore is { } restore)
         {
+            if (!_workspace.IsOpen)
+            {
+                return;
+            }
+
             ShowWorkspace();
             if (restore.FilePath is { } path)
             {

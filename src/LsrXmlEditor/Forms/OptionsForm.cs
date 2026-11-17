@@ -12,6 +12,10 @@ public sealed class OptionsForm : Form
         Color.FromArgb(0, 120, 215), Color.FromArgb(0, 120, 215), Color.White, Color.FromArgb(217, 217, 217), Color.FromArgb(229, 243, 255),
         Color.FromArgb(240, 240, 240), Color.Firebrick);
 
+    private const int PreviewWidth = 480;
+    private const int PreviewGap = 10;
+    private const int LineGap = 6;
+
     private static readonly string[] Rows = ["AMBIENT_GANG_LOST", "AMBIENT_GANG_BALLAS", "AMBIENT_GANG_FAMILY"];
     private static readonly string[] Names = ["The Lost MC", "Ballas", "The Families"];
 
@@ -19,6 +23,7 @@ public sealed class OptionsForm : Form
     private readonly ComboBox _theme = new() { DropDownStyle = ComboBoxStyle.DropDownList, MaxDropDownItems = 12 };
     private readonly ComboBox _size = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Panel _preview = new() { Margin = new Padding(0, 4, 0, 8) };
+    private readonly Label _note = new() { AutoSize = true, ForeColor = SystemColors.GrayText };
     private Font? _previewFont;
     private Font? _previewBold;
 
@@ -42,7 +47,7 @@ public sealed class OptionsForm : Form
         _size.Items.AddRange([.. UiTheme.TextSizes.Select(s => s == AppSettings.DefaultTextSize ? $"{s} % (default)" : $"{s} %")]);
         _size.SelectedIndex = Math.Max(0, UiTheme.TextSizes.ToList().IndexOf(settings.TextSize));
         _theme.Width = _size.Width = LogicalToDeviceUnits(UiTheme.Grow(240));
-        _preview.Size = new Size(LogicalToDeviceUnits(UiTheme.Grow(480)), LogicalToDeviceUnits(UiTheme.Grow(176)));
+        _note.Text = "Apply switches the look right away – open files, unsaved changes and undo stay as they are.";
         _preview.Paint += (_, e) => PaintPreview(e.Graphics);
         _theme.SelectedIndexChanged += (_, _) => UpdatePreviewFont();
         _size.SelectedIndexChanged += (_, _) => UpdatePreviewFont();
@@ -63,15 +68,8 @@ public sealed class OptionsForm : Form
         layout.SetColumnSpan(previewCaption, 2);
         layout.Controls.Add(_preview, 0, 4);
         layout.SetColumnSpan(_preview, 2);
-        var note = new Label
-        {
-            Text = "Apply switches the look right away – open files, unsaved changes and undo stay as they are.",
-            AutoSize = true,
-            ForeColor = SystemColors.GrayText,
-            MaximumSize = new Size(_preview.Width, 0)
-        };
-        layout.Controls.Add(note, 0, 5);
-        layout.SetColumnSpan(note, 2);
+        layout.Controls.Add(_note, 0, 5);
+        layout.SetColumnSpan(_note, 2);
 
         var ok = new Button { Text = "&Apply", AutoSize = true, MinimumSize = new Size(LogicalToDeviceUnits(80), 0) };
         var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel, MinimumSize = new Size(LogicalToDeviceUnits(80), 0) };
@@ -100,6 +98,8 @@ public sealed class OptionsForm : Form
 
     private int SelectedSize => UiTheme.TextSizes[Math.Max(0, _size.SelectedIndex)];
 
+    private int PreviewLine => (_previewFont?.Height ?? 0) + LogicalToDeviceUnits(LineGap);
+
     private ThemePalette PreviewPalette => UiTheme.Resolve(SelectedTheme) ?? ClassicPreview;
 
     private static Label Caption(string text) =>
@@ -118,8 +118,12 @@ public sealed class OptionsForm : Form
         _previewFont?.Dispose();
         _previewBold?.Dispose();
         var name = UiTheme.IsInstalled(PreviewPalette.FontName) ? PreviewPalette.FontName : ThemeCatalog.DefaultFont;
-        _previewFont = new Font(name, UiTheme.BaseFontSize * SelectedSize / 100f);
+        var scale = SelectedSize / 100f;
+        _previewFont = new Font(name, UiTheme.BaseFontSize * scale);
         _previewBold = new Font(_previewFont, FontStyle.Bold);
+        var lines = Rows.Length + 3;
+        _preview.Size = new Size(LogicalToDeviceUnits((int)Math.Round(PreviewWidth * scale)), lines * PreviewLine + LogicalToDeviceUnits(PreviewGap));
+        _note.MaximumSize = new Size(_preview.Width, 0);
         _preview.Invalidate();
     }
 
@@ -133,8 +137,8 @@ public sealed class OptionsForm : Form
         var palette = PreviewPalette;
         var width = _preview.ClientSize.Width;
         var height = _preview.ClientSize.Height;
-        var padding = LogicalToDeviceUnits(10);
-        var line = _previewFont.Height + LogicalToDeviceUnits(6);
+        var padding = LogicalToDeviceUnits(PreviewGap);
+        var line = PreviewLine;
         var column = width / 2;
         graphics.Clear(palette.Window);
 

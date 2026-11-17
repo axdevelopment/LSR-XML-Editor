@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Xml.Linq;
+using LsrXmlEditor.Core.Text;
 using LsrXmlEditor.Core.Xml;
 
 namespace LsrXmlEditor.Core.Creators;
@@ -17,12 +18,25 @@ public static class MenuEditing
     public const string DemandField = "NumberOfItemsToPurchaseFromPlayer";
     public const string IllicitField = "IsIllicilt";
 
+    private const string NameField = "Name";
+    private const string CategorySuffix = "Items";
     private const string MenuElement = "ShopMenu";
     private const string ItemsElement = "Items";
     private const string ItemElement = "MenuItem";
     private const string ExtrasElement = "Extras";
     private const string ChanceField = "SelectChance";
     private const string Unlimited = "-1";
+
+    public static IReadOnlyList<ModItemInfo> ListModItems(IEnumerable<XDocument> documents) =>
+        [.. documents
+            .SelectMany(d => d.Root?.Elements() ?? [])
+            .SelectMany(c => c.Elements().Select(i => new ModItemInfo(i.Element(NameField)?.Value.Trim() ?? string.Empty, Category(c.Name.LocalName))))
+            .Where(i => i.Name.Length > 0)
+            .DistinctBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase)];
+
+    private static string Category(string container) =>
+        DisplayNames.Humanize(container.EndsWith(CategorySuffix, StringComparison.Ordinal) && container.Length > CategorySuffix.Length ? container[..^CategorySuffix.Length] : container);
 
     private static readonly string[] Counters = ["NumberOfItemsSoldToPlayer", "NumberOfItemsPurchasedByPlayer"];
 

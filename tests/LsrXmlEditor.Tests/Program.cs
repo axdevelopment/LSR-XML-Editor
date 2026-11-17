@@ -172,6 +172,18 @@ try
         XElement.Parse("<Root><A><Item><ID>a</ID></Item><Item><ID>b</ID></Item></A><B /></Root>"));
     Check(emptied.Count == 2 && emptied.All(o => o.Kind == ChangeKind.EntryRemoved && o.Category == "Root/B"), "emptied category reports removed entries");
 
+    var listDoc = XDocument.Parse(
+        "<Menus>\n  <Menu>\n    <Items>\n      <Item>\n        <Name>a</Name>\n      </Item>\n      <Item>\n        <Name>b</Name>\n      </Item>\n    </Items>\n  </Menu>\n  <Menu>\n    <Items />\n  </Menu>\n  <Menu>\n    <Items>\n      <Item>\n        <Name>c</Name>\n      </Item>\n    </Items>\n    <Name>x</Name>\n  </Menu>\n</Menus>",
+        LoadOptions.PreserveWhitespace);
+    var lists = listDoc.Descendants("Items").ToList();
+    var appended = XmlEditing.AddItem(lists[0], XmlEditing.ItemTemplate(lists[0])!);
+    Check(lists[0].Elements().Count() == 3 && appended.Element("Name")!.Value == "b", "add element appends a copy of the last item");
+    var first = XmlEditing.AddItem(lists[1], XmlEditing.ItemTemplate(lists[1])!);
+    Check(lists[1].ToString(SaveOptions.DisableFormatting).ReplaceLineEndings("\n") == "<Items>\n      <Item>\n        <Name>a</Name>\n      </Item>\n    </Items>" && first.Parent == lists[1],
+        "add element fills an empty list with the same indentation as other lists");
+    Check(XmlEditing.ItemTemplate(lists[2]) is { } single && single.Element("Name")!.Value == "c", "a list with one item is recognized through other lists");
+    Check(XmlEditing.ItemTemplate(listDoc.Root!.Elements("Menu").Last().Element("Name")!) is null, "plain fields are not lists");
+
     var logPath = Path.Combine(work, "corrupt.json");
     File.WriteAllText(logPath, "{ not json");
     var corruptLog = new ChangeLogStore(logPath);

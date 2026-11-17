@@ -13,6 +13,8 @@ public sealed class EditContext(IReadOnlyList<XElement> entries, FieldKindIndex 
 
     public FieldKindIndex Kinds { get; } = kinds;
 
+    public IValueSuggestions? Suggestions { get; init; }
+
     public void NotifyChanged(IReadOnlyList<XElement> elements) => changed(elements);
 
     public bool IsUnlocked(XElement element) => _unlocked.Contains(element);

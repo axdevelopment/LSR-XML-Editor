@@ -55,6 +55,44 @@ public static class XmlEditing
         container.Add(element);
     }
 
+    public static XElement? ItemTemplate(XElement list)
+    {
+        if (StructureAnalyzer.IsCollection(list))
+        {
+            return list.Elements().Last();
+        }
+
+        var parent = list.Parent?.Name;
+        var sample = list.Document?.Root?
+            .Descendants(list.Name)
+            .FirstOrDefault(e => e.Parent?.Name == parent && StructureAnalyzer.IsCollection(e));
+        if (sample is null)
+        {
+            return null;
+        }
+
+        var item = sample.Elements().First();
+        return list.HasElements
+            ? list.Elements().All(e => e.Name == item.Name) ? list.Elements().Last() : null
+            : list.IsEmpty || string.IsNullOrWhiteSpace(list.Value) ? item : null;
+    }
+
+    public static XElement AddItem(XElement list, XElement template)
+    {
+        var item = new XElement(template);
+        if (list.Elements().LastOrDefault() is { } last)
+        {
+            InsertAfter(last, item);
+            return item;
+        }
+
+        var before = template.PreviousNode is XText { Value: var lead } && string.IsNullOrWhiteSpace(lead) ? lead : null;
+        var after = template.Parent?.LastNode is XText { Value: var tail } && string.IsNullOrWhiteSpace(tail) ? tail : null;
+        list.RemoveNodes();
+        list.Add(before is null ? null : new XText(before), item, after is null ? null : new XText(after));
+        return item;
+    }
+
     public static void Remove(XElement element)
     {
         if (element.PreviousNode is XText text && string.IsNullOrWhiteSpace(text.Value))

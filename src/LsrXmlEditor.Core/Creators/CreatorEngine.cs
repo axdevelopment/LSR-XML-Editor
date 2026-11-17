@@ -11,7 +11,6 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
     private const string ListItem = "string";
     private const string PriorityField = "Priority";
     private const string MenuItemElement = "MenuItem";
-    private const string ItemsSuffix = "Items";
     private const string GroupNameField = "GroupName";
     private const string ContainerGroupField = "ShopMenuGroupID";
 
@@ -109,13 +108,7 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
             .Where(o => o.Id.Length > 0)
             .DistinctBy(o => o.Id, StringComparer.OrdinalIgnoreCase)];
 
-    public IReadOnlyList<ModItemInfo> ModItems() =>
-        _items ??= [.. documents(CreatorCatalog.ModItemsFile)
-            .SelectMany(d => d.Root?.Elements() ?? [])
-            .SelectMany(c => c.Elements().Select(i => new ModItemInfo(i.Element(CreatorCatalog.NameField)?.Value.Trim() ?? string.Empty, Category(c.Name.LocalName))))
-            .Where(i => i.Name.Length > 0)
-            .DistinctBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
-            .OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase)];
+    public IReadOnlyList<ModItemInfo> ModItems() => _items ??= MenuEditing.ListModItems(documents(CreatorCatalog.ModItemsFile));
 
     public bool ItemExists(string name) =>
         (_itemNames ??= new HashSet<string>(ModItems().Select(i => i.Name), StringComparer.OrdinalIgnoreCase)).Count == 0 || _itemNames.Contains(name);
@@ -227,9 +220,6 @@ public sealed class CreatorEngine(Func<string, IReadOnlyList<XDocument>> documen
 
     private static bool Uses(XElement entry, IReadOnlyList<string> fields, string id) =>
         fields.Any(f => Same(entry.Element(f)?.Value, id));
-
-    private static string Category(string container) =>
-        DisplayNames.Humanize(container.EndsWith(ItemsSuffix, StringComparison.Ordinal) && container.Length > ItemsSuffix.Length ? container[..^ItemsSuffix.Length] : container);
 
     private IEnumerable<XElement> Rows(AreaRows rows) => documents(rows.FileBase).SelectMany(d => d.Root?.Elements(rows.Element) ?? []);
 
