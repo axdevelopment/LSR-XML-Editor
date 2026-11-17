@@ -21,7 +21,8 @@ Runs completely offline – no auto-updater, no downloads, no telemetry.
 - Entry list with filter and sorting, properties in a standard Windows property grid with validated values, drop-downs and expandable lists, plus a raw XML view.
 - Alternate configs (`File+_Name.xml` additive, `File_Name.xml` replacement) are detected and listed under their base file.
 - Values that refer to GTA V itself (relationship groups, model names, animations, zone codes, voices) are locked with a padlock and can be unlocked on purpose.
-- Edit several entries at once, duplicate or delete entries and list items.
+- Edit several entries at once, duplicate or delete entries, add, duplicate or remove list items (right-click in the property grid).
+- Shop menu items are picked from a searchable list of everything in `ModItems.xml`; unknown names are flagged.
 - Undo and redo the last 10 changes (Ctrl+Z / Ctrl+Y).
 - Search across all files and jump straight to the field (Ctrl+Shift+F).
 - Automatic backup before every save, restore via *Tools → Backups*.
